@@ -38,12 +38,13 @@ data Parcela = Parcela {
 
 data Cosecha = Cosecha {
     idCosecha    :: Int,
-    idParcelac    :: Int,            
-    trabajadores :: [Trabajador],   
-    fechaInicio  :: String,
-    fechaFin     :: String,
-    vegetal      :: String,         -- tipo de vegetal recolectado
-    cantidadKg   :: Float           -- cuántos kilos se recolectaron
+    idParcelac   :: Int,            
+    fechaInicio  :: Day,
+    fechaFin     :: Day,
+    cedulaTrabajador :: String,   
+    vegetal      :: String,
+    cantidadKg   :: Int,
+    estadoCosecha :: String
 } deriving (Show)
 
 
@@ -579,11 +580,12 @@ subMenuCosecha = do
     vegetal <- liftIO getLine
     liftIO $ putStrLn $ "El vegetal ingresado es: " ++ vegetal
 
+
     -- Cantidad en kg
     liftIO $ putStr "Cantidad en KG: "
     liftIO $ hFlush stdout
     cantidadStr <- liftIO getLine
-    let cantidad = read cantidadStr :: Float
+    let cantidad = read cantidadStr :: Int
 
     let estado = "Abierto"
 
@@ -592,17 +594,29 @@ subMenuCosecha = do
 
     liftIO $ putStrLn "Cosecha registrada correctamente."
 
-insertCosecha :: Connection -> Int -> String -> Maybe Day -> Maybe Day -> String -> Float -> String -> IO ()
+    cosecha <- liftIO $ obtenerCosecha conn
+    liftIO $ print cosecha 
+
+insertCosecha :: Connection -> Int -> String -> Maybe Day -> Maybe Day -> String -> Int -> String -> IO ()
 insertCosecha conn idParcela cedula fechaInicioF fechaFinF vegetal cantidad estado = do
     let fechaInicio = case fechaInicioF of
             Just fecha -> formatTime defaultTimeLocale "%Y-%m-%d" fecha
-            Nothing -> "NULL" -
+            Nothing -> "NULL" 
     
     let fechaFin = case fechaFinF of
             Just fecha -> formatTime defaultTimeLocale "%Y-%m-%d" fecha
             Nothing -> "NULL" 
 
     _ <- execute conn
-        "INSERT INTO Cosechas (idParcela, fechainicio, fechafin, cedula, nombrevege, precioVege, estadoCosecha) VALUES (?,?,?,?,?,?,?)"
-        (idParcela, fechaInicio, fechaFin, cedula, vegetal, cantidad, estado)
+        "INSERT INTO Cosechas (idParcela, fechainicio, fechafin, cedula, nombrevege,cantidadVege, estadoCosecha) VALUES (?,?,?,?,?,?,?)"
+        (idParcela, fechaInicio, fechaFin, cedula, vegetal,cantidad, estado)
     return ()
+
+
+obtenerCosecha :: Connection -> IO [Cosecha]
+obtenerCosecha conn = do
+    resultados <- query_ conn "SELECT idCosecha, idParcela, fechainicio, fechafin, cedula, nombrevege, cantidadVege, estadoCosecha FROM Cosechas"
+    return $ map (\(idC, idP, fi, ff, ce, nv, cv, ec) -> 
+        Cosecha idC idP fi ff ce nv cv ec) resultados
+
+
