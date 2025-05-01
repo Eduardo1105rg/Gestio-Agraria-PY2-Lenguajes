@@ -596,7 +596,7 @@ insertCosecha :: Connection -> Int -> String -> Maybe Day -> Maybe Day -> String
 insertCosecha conn idParcela cedula fechaInicioF fechaFinF vegetal cantidad estado = do
     let fechaInicio = case fechaInicioF of
             Just fecha -> formatTime defaultTimeLocale "%Y-%m-%d" fecha
-            Nothing -> "NULL" -
+            Nothing -> "NULL"
     
     let fechaFin = case fechaFinF of
             Just fecha -> formatTime defaultTimeLocale "%Y-%m-%d" fecha

@@ -3,7 +3,7 @@ use fincaAgricola;
 
 create table Trabajadores(
 	cedula varchar(9) primary key,
-    nombreCompletoparcelaparcela varchar(40),
+    nombreCompleto varchar(40),
     rol varchar(20)
 );
 insert into Trabajadores(cedula, nombreCompleto, rol) 
