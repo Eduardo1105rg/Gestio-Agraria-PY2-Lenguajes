@@ -108,4 +108,14 @@ end $$
 DELIMITER ; 
 -- drop procedure sp_ModificarEstadoCosecha;
 
-
+-- Procedure para eliminar una cosecha.
+delimiter $$
+use fincaAgricola$$
+create procedure sp_EliminarCosecha (in p_idCosecha int) 
+begin 
+    
+    delete from Cosechas
+    where idCosecha = p_idCosecha;
+    
+end $$
+DELIMITER ; 
