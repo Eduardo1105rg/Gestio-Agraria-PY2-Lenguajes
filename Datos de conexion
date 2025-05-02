@@ -1,8 +1,0 @@
-
-
-connectHost = "172.22.112.1",
-connectPort = 3307,
-connectUser = "root",
-connectPassword = "root",
-connectDatabase = "fincaAgricola"
-

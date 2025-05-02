@@ -44,7 +44,8 @@ data Cosecha = Cosecha {
     cedulaTrabajador :: String,   
     vegetal      :: String,
     cantidadKg   :: Int,
-    estadoCosecha :: String
+    estadoCosecha :: String,
+    kilosRecogidos :: Int
 } deriving (Show)
 
 
@@ -62,7 +63,7 @@ main = do
     putStrLn "Intentando conectar a la base de datos..."
     --Datos para conectarme a la base
     let connectInfo = defaultConnectInfo {
-            connectHost = "192.168.50.136",
+            connectHost = "172.22.112.1",
             connectPort = 3307,
             connectUser = "root",
             connectPassword = "root",
@@ -140,7 +141,7 @@ opcionesGenerales = do
     opcionSubG <- liftIO getLine
     case opcionSubG of
         "1" -> subMenuCosecha
-        "2" -> liftIO $ putStrLn "Entrando a Cierre de cosechas"
+        "2" -> cerrarCosecha
         "3" -> liftIO $ putStrLn "Entrando a Consultar cosecha"
         "4" -> liftIO $ putStrLn "Entrando a Cancelación o modificación de cosecha"
         "5" -> liftIO $ putStrLn "Entrando a Consulta disponibilidad de parcela"
@@ -587,7 +588,7 @@ subMenuCosecha = do
     cantidadStr <- liftIO getLine
     let cantidad = read cantidadStr :: Int
 
-    let estado = "Abierto"
+    let estado = "Abierto" -- Tipo de estado: Abierto, Cerrado, Cancelado.
 
     conn <- ask
     liftIO $ insertCosecha conn idParcela cedula fechaInicio fechaFin vegetal cantidad estado
@@ -615,8 +616,95 @@ insertCosecha conn idParcela cedula fechaInicioF fechaFinF vegetal cantidad esta
 
 obtenerCosecha :: Connection -> IO [Cosecha]
 obtenerCosecha conn = do
-    resultados <- query_ conn "SELECT idCosecha, idParcela, fechainicio, fechafin, cedula, nombrevege, cantidadVege, estadoCosecha FROM Cosechas"
-    return $ map (\(idC, idP, fi, ff, ce, nv, cv, ec) -> 
-        Cosecha idC idP fi ff ce nv cv ec) resultados
+    resultados <- query_ conn "SELECT idCosecha, idParcela, fechainicio, fechafin, cedula, nombrevege, estadoCosecha, KilosPlanificados, KilosRecogidos FROM Cosechas"
+    return $ map (\(idC, idP, fi, ff, ce, nv, kp, ec, kr) -> 
+        Cosecha idC idP fi ff ce nv kp ec kr) resultados
 
+-- Funcion para crear una entrada de teclado para texto, se valida que lo que se ingrese no seva vacio..
+leerEntradaTexto :: String -> IO String
+leerEntradaTexto mensaje = do
+    putStrLn mensaje
+    hFlush stdout
+    entrada <- getLine
+    if null entrada
+        then do
+            putStrLn "La entrada no puede estar vacía. Inténtelo de nuevo."
+            leerEntradaTexto mensaje
+        else return entrada
+-- Fin de la funcion.
+
+-- Funcion para crear una entrada de teclado para numeros.
+leerEntradaNumero :: String -> IO Int
+leerEntradaNumero mensaje = do
+    putStrLn mensaje
+    hFlush stdout
+    entrada <- getLine
+    let parsed = reads entrada :: [(Int, String)]
+    case parsed of
+        [(num, "")] | num >= 0 -> return num
+        _ -> do
+            putStrLn "Entrada invalida. Debe ser un numero mayor a 0. Intentelo de nuevo."
+            leerEntradaNumero mensaje
+-- Fin de la funcion.
+
+
+-- Validar la posibilidad de optener una cosecha por su id, -1: No se encontro la cosecha, -2: No esta en estado Abierto, 1: Se puede optener la cosecha por su ID.
+validarPosibilidadOptenerCosechaPorID :: Connection -> Int -> IO Int
+validarPosibilidadOptenerCosechaPorID conn idCosecha_Validar = do
+    resultado <- query conn "CALL sp_ValidarPosibilidaOptenerCosechaID(?)" (Only idCosecha_Validar) :: IO [Only Int] -- El only es por que se espera que enviemos una tupla, pero en este caso podria dar error.
+    -- El IO [[SQLInteger]], se indica el dato que se espera.
+    case resultado of 
+        [Only valor] -> return $ fromIntegral valor
+        _ -> return (-99) -- Codigo de error desconocido.       
+-- Fin de la funcion.
+
+
+-- Optener los datos de una cosecha por su id 
+optenerCosechaPorID :: Connection -> Int -> IO [Cosecha]
+optenerCosechaPorID conn idCosecha_Optener = do
+    resultados <- query conn "CALL sp_OptenerCosechaID(?)" (Only idCosecha_Optener) :: IO [(Int, Int, Day, Day, String, String, String, Int, Int)]
+    return $ map (\(idC, idP, fi, ff, ce, nv, ec, kp, kr) -> 
+        Cosecha idC idP fi ff ce nv kp ec kr) resultados
+
+
+actualizarEstadoCosecha :: Connection -> Int ->  String -> Int -> IO ()
+actualizarEstadoCosecha conn idCosecha nuevoEstado kilosRecogidos = do
+    _ <- execute conn "CALL sp_ModificarEstadoCosecha(?, ?, ?)" (idCosecha, nuevoEstado, kilosRecogidos)
+    return ()
+
+
+
+cerrarCosecha ::  App ()
+cerrarCosecha  = do
+    conn <- ask
+    liftIO $ putStrLn  ">> Apartado para el cierre de la cosecha."
+    idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
+
+    resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
+    case resultado of
+        -1 -> do 
+            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
+            liftIO $ hFlush stdout
+            return ()
+        -2 -> do 
+            liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada."
+            liftIO $ hFlush stdout
+            return ()
+    -- if resultado == -1 then 
+    --     liftIO $ "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
+    --     liftIO $ hFlush stdout
+    --     return ()
+    -- else if resultado == -2 then 
+    --     liftIO $ "Error: La cosecha ingresada ya ha sido cerrada."
+    --     liftIO $ hFlush stdout
+    --     return ()
+    -- else do
+        _ -> do
+            kilosRecogidos <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
+            _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Cerrada" kilosRecogidos
+            liftIO $ putStrLn "La cosecha se ha cerrado correctamente."
+            liftIO $ hFlush stdout
+            return ()
+
+-- Optener cosecha por id, ademas agregar algo para validar si hay algun error.
 
