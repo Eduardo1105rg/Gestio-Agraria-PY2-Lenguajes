@@ -142,7 +142,7 @@ opcionesGenerales = do
     case opcionSubG of
         "1" -> subMenuCosecha
         "2" -> cerrarCosecha
-        "3" -> liftIO $ putStrLn "Entrando a Consultar cosecha"
+        "3" -> consultarCosechaPorID
         "4" -> liftIO $ putStrLn "Entrando a Cancelación o modificación de cosecha"
         "5" -> liftIO $ putStrLn "Entrando a Consulta disponibilidad de parcela"
         "6" -> return ()  
@@ -660,11 +660,18 @@ validarPosibilidadOptenerCosechaPorID conn idCosecha_Validar = do
 
 
 -- Optener los datos de una cosecha por su id 
-optenerCosechaPorID :: Connection -> Int -> IO [Cosecha]
+-- optenerCosechaPorID :: Connection -> Int -> IO [Cosecha]
+-- optenerCosechaPorID conn idCosecha_Optener = do
+--     resultados <- query conn "CALL sp_OptenerCosechaID(?)" (Only idCosecha_Optener) :: IO [(Int, Int, Day, Day, String, String, String, Int, Int)]
+--     return $ map (\(idC, idP, fi, ff, ce, nv, ec, kp, kr) -> 
+--         Cosecha idC idP fi ff ce nv kp ec kr) resultados
+optenerCosechaPorID :: Connection -> Int -> IO Cosecha
 optenerCosechaPorID conn idCosecha_Optener = do
     resultados <- query conn "CALL sp_OptenerCosechaID(?)" (Only idCosecha_Optener) :: IO [(Int, Int, Day, Day, String, String, String, Int, Int)]
-    return $ map (\(idC, idP, fi, ff, ce, nv, ec, kp, kr) -> 
-        Cosecha idC idP fi ff ce nv kp ec kr) resultados
+    case resultados of
+        [(idC, idP, fi, ff, ce, nv, ec, kp, kr)] -> return $ Cosecha idC idP fi ff ce nv kp ec kr
+        _ -> error "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
+
 
 
 actualizarEstadoCosecha :: Connection -> Int ->  String -> Int -> IO ()
@@ -673,10 +680,10 @@ actualizarEstadoCosecha conn idCosecha nuevoEstado kilosRecogidos = do
     return ()
 
 
-
+-- Funcion para cerrar una cosecha, el usuario ingresara el id de la cosecha que desea cerrar y la cantidad de kilos recogidos.
 cerrarCosecha ::  App ()
-cerrarCosecha  = do
-    conn <- ask
+cerrarCosecha = do
+    conn <- ask  -- Este seria para para inicar la conexcion con la base de datos.
     liftIO $ putStrLn  ">> Apartado para el cierre de la cosecha."
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
 
@@ -690,21 +697,45 @@ cerrarCosecha  = do
             liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada."
             liftIO $ hFlush stdout
             return ()
-    -- if resultado == -1 then 
-    --     liftIO $ "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
-    --     liftIO $ hFlush stdout
-    --     return ()
-    -- else if resultado == -2 then 
-    --     liftIO $ "Error: La cosecha ingresada ya ha sido cerrada."
-    --     liftIO $ hFlush stdout
-    --     return ()
-    -- else do
         _ -> do
-            kilosRecogidos <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
-            _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Cerrada" kilosRecogidos
+            kilosRecogidos_Input <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
+            _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Cerrada" kilosRecogidos_Input
             liftIO $ putStrLn "La cosecha se ha cerrado correctamente."
             liftIO $ hFlush stdout
             return ()
 
--- Optener cosecha por id, ademas agregar algo para validar si hay algun error.
 
+mostrarDatosCosecha :: Cosecha -> IO ()
+mostrarDatosCosecha p_datosCosechaMostrar = do
+    putStrLn  "\n>> ==== Detalles de la cosecha ===="
+    putStrLn $ "ID: " ++ show (idCosecha p_datosCosechaMostrar)
+    putStrLn $ "Parcela ID: " ++ show (idParcelac p_datosCosechaMostrar)
+    putStrLn $ "Fecha de inicio: " ++ show (fechaInicio p_datosCosechaMostrar)
+    putStrLn $ "Fecha de fin: " ++ show (fechaFin p_datosCosechaMostrar)
+    putStrLn $ "Trabajador (cédula): " ++ cedulaTrabajador p_datosCosechaMostrar
+    putStrLn $ "Vegetal: " ++ vegetal p_datosCosechaMostrar
+    putStrLn $ "Cantidad (Kg): " ++ show (cantidadKg p_datosCosechaMostrar)
+    putStrLn $ "Estado: " ++ estadoCosecha p_datosCosechaMostrar
+    putStrLn $ "Kilos recogidos: " ++ show (kilosRecogidos p_datosCosechaMostrar)
+    putStrLn "> == Fin de los datos de la cosecha. =="
+    hFlush stdout
+
+
+consultarCosechaPorID :: App ()
+consultarCosechaPorID = do
+    conn <- ask -- Este seria para para inicar la conexcion con la base de datos.
+    liftIO $ putStrLn  ">> Apartado para el cierre de la cosecha."
+    idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
+
+    resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
+
+    case resultado of
+        -1 -> do 
+            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
+            liftIO $ hFlush stdout
+            return ()
+
+        _ -> do
+            datosCosecha <- liftIO $ optenerCosechaPorID conn idCosechaIngreado
+            _ <- liftIO $ mostrarDatosCosecha datosCosecha
+            return ()
