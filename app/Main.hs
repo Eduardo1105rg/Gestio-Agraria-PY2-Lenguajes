@@ -662,33 +662,33 @@ leerEntradaNumero mensaje = do
 
 
 -- Validar la posibilidad de optener una cosecha por su id, -1: No se encontro la cosecha, -2: No esta en estado Abierto, 1: Se puede optener la cosecha por su ID.
+-- validarPosibilidadOptenerCosechaPorID :: Connection -> Int -> IO Int
+-- validarPosibilidadOptenerCosechaPorID conn idCosecha_Validar = do
+--     resultado <- query conn "CALL sp_ValidarPosibilidaOptenerCosechaID(?)" (Only idCosecha_Validar) :: IO [Only Int] -- El only es por que se espera que enviemos una tupla, pero en este caso podria dar error.
+--     -- El IO [[SQLInteger]], se indica el dato que se espera.
+--     case resultado of 
+--         [Only valor] -> return $ fromIntegral valor
+--         _ -> return (-99) -- Codigo de error desconocido.       
+--     -- return 1
+-- -- Fin de la funcion.
+
+-- -- Funcion para validar si el id de una cosecha existe.
+-- validarExistenciaCosechaID :: Connection -> Int -> IO Int
+-- validarExistenciaCosechaID conn idCosecha = do
+--     resultado <- query conn "CALL sp_ExisteCosechaPorID(?)" (Only idCosecha) :: IO [Only Int]
+--     case resultado of
+--         [Only valor] -> return valor
+--         _            -> return (-99) -- Error inesperado   
+
+-- validarEstadoCosechaID :: Connection -> Int -> IO Int
+-- validarEstadoCosechaID conn idCosecha = do
+--     resultado <- query conn "CALL sp_EstadoCosechaEsAbierto(?)" (Only idCosecha) :: IO [Only Int]
+--     case resultado of
+--         [Only valor] -> return valor
+--         _            -> return (-99) -- Error inesperado 
+
 validarPosibilidadOptenerCosechaPorID :: Connection -> Int -> IO Int
-validarPosibilidadOptenerCosechaPorID conn idCosecha_Validar = do
-    resultado <- query conn "CALL sp_ValidarPosibilidaOptenerCosechaID(?)" (Only idCosecha_Validar) :: IO [Only Int] -- El only es por que se espera que enviemos una tupla, pero en este caso podria dar error.
-    -- El IO [[SQLInteger]], se indica el dato que se espera.
-    case resultado of 
-        [Only valor] -> return $ fromIntegral valor
-        _ -> return (-99) -- Codigo de error desconocido.       
-    -- return 1
--- Fin de la funcion.
-
--- Funcion para validar si el id de una cosecha existe.
-validarExistenciaCosechaID :: Connection -> Int -> IO Int
-validarExistenciaCosechaID conn idCosecha = do
-    resultado <- query conn "CALL sp_ExisteCosechaPorID(?)" (Only idCosecha) :: IO [Only Int]
-    case resultado of
-        [Only valor] -> return valor
-        _            -> return (-99) -- Error inesperado   
-
-validarEstadoCosechaID :: Connection -> Int -> IO Int
-validarEstadoCosechaID conn idCosecha = do
-    resultado <- query conn "CALL sp_EstadoCosechaEsAbierto(?)" (Only idCosecha) :: IO [Only Int]
-    case resultado of
-        [Only valor] -> return valor
-        _            -> return (-99) -- Error inesperado 
-
-validarTodoEnUna :: Connection -> Int -> IO Int
-validarTodoEnUna conn idCosecha = do
+validarPosibilidadOptenerCosechaPorID conn idCosecha = do
     resultado <- query conn
         "SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM Cosechas WHERE idCosecha = ?) THEN -1 \
         \WHEN EXISTS (SELECT 1 FROM Cosechas WHERE idCosecha = ? AND estadoCosecha != 'Abierto') THEN -2 \
@@ -705,23 +705,34 @@ validarTodoEnUna conn idCosecha = do
 --     resultados <- query conn "CALL sp_OptenerCosechaID(?)" (Only idCosecha_Optener) :: IO [(Int, Int, Day, Day, String, String, String, Int, Int)]
 --     return $ map (\(idC, idP, fi, ff, ce, nv, ec, kp, kr) -> 
 --         Cosecha idC idP fi ff ce nv kp ec kr) resultados
-optenerCosechaPorID :: Connection -> Int -> IO Cosecha
-optenerCosechaPorID conn idCosecha_Optener = do
-    resultados <- query conn "CALL sp_OptenerCosechaID(?)" (Only idCosecha_Optener) :: IO [(Int, Int, Day, Day, String, String, String, Int, Int)]
-    case resultados of
-        [(idC, idP, fi, ff, ce, nv, ec, kp, kr)] -> return $ Cosecha idC idP fi ff ce nv kp ec kr
-        _ -> error "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
+-- optenerCosechaPorID :: Connection -> Int -> IO Cosecha
+-- optenerCosechaPorID conn idCosecha_Optener = do
+--     resultados <- query conn "CALL sp_OptenerCosechaID(?)" (Only idCosecha_Optener) :: IO [(Int, Int, Day, Day, String, String, String, Int, Int)]
+--     case resultados of
+--         [(idC, idP, fi, ff, ce, nv, ec, kp, kr)] -> return $ Cosecha idC idP fi ff ce nv kp ec kr
+--         _ -> error "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
 -- Fin de la funcion.
+optenerCosechaPorID :: Connection -> Int -> IO (Maybe Cosecha)
+optenerCosechaPorID conn idCosecha = do
+    resultados <- query conn
+        "SELECT idCosecha, idParcela, fechainicio, fechafin, cedula, nombrevege, KilosPlanificados, estadoCosecha, KilosRecogidos \
+        \FROM Cosechas WHERE idCosecha = ?"
+        (Only idCosecha) :: IO [(Int, Int, Day, Day, String, String, Int, String, Int)]
+    
+    return $ case resultados of
+        [(idC, idP, fi, ff, ce, nv, kp, ec, kr)] -> Just (Cosecha idC idP fi ff ce nv kp ec kr)
+        _         -> Nothing -- Este nunca deberia de pasar, ya que hago una validacion por aparte para saber si puedo hacer la consulta o no.
+
 
 
 -- Funcion para modificar el estado de una cosecha mediente su id.
-actualizarEstadoCosecha :: Connection -> Int ->  String -> Int -> IO ()
-actualizarEstadoCosecha conn idCosecha_estado nuevoEstado p_kilosRecogidos = do
-    _ <- execute conn "CALL sp_ModificarEstadoCosecha(?, ?, ?)" (idCosecha_estado, nuevoEstado, p_kilosRecogidos)
-    -- _ <- query_ conn (fromString $ "CALL sp_ModificarEstadoCosecha(" ++ show idCosecha_estado ++ ", " ++ nuevoEstado ++ ", " ++ show p_kilosRecogidos ++ ")") :: IO [Only Int]
-
-    -- void $ (query_ conn "SELECT 1" :: IO [Only Int]) 
+actualizarEstadoCosecha :: Connection -> Int -> String -> Int -> IO ()
+actualizarEstadoCosecha conn idCosecha nuevoEstado kilosRecogidos = do
+    _ <- execute conn
+        "UPDATE Cosechas SET estadoCosecha = ?, kilosRecogidos = ? WHERE idCosecha = ?"
+        (nuevoEstado, kilosRecogidos, idCosecha)
     return ()
+
 -- Fin de la funcion.
 
 
@@ -732,7 +743,7 @@ cerrarCosecha = do
     liftIO $ putStrLn  ">> Apartado para el cierre de la cosecha."
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
 
-    resultado <- liftIO $ validarTodoEnUna conn idCosechaIngreado
+    resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
     -- liftIO $ print resultado
     -- liftIO $ hFlush stdout
     -- _ <- liftIO $ (query_ conn "SELECT 1" :: IO [Only Int]) 
@@ -813,7 +824,7 @@ consultarCosechaPorID = do
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea ver: "
 
     resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
-
+    liftIO $ print resultado
     case resultado of
         -1 -> do 
             liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
@@ -821,15 +832,19 @@ consultarCosechaPorID = do
             opcionesGenerales
 
         _ -> do
+            -- liftIO $ print "Pass 1."
             datosCosecha <- liftIO $ optenerCosechaPorID conn idCosechaIngreado
-            _ <- liftIO $ mostrarDatosCosecha datosCosecha
+            case datosCosecha of
+                Just cosecha -> liftIO $ mostrarDatosCosecha cosecha
+                Nothing      -> liftIO $ putStrLn "Error: No se encontraron datos de la cosecha."
             opcionesGenerales
 
 
 eliminarCosechaDB :: Connection -> Int -> IO ()
-eliminarCosechaDB conn idCosecha_eliminar = do
-    _ <- execute conn "CALL sp_EliminarCosecha(?)" (Only idCosecha_eliminar)
+eliminarCosechaDB conn idCosecha = do
+    _ <- execute conn "DELETE FROM Cosechas WHERE idCosecha = ?" (Only idCosecha)
     return ()
+
 
 -- Funcion para eliminar una cosecha que todavia se encuentre abierta, mediante su id.
 cancelarCosecha ::  App ()
