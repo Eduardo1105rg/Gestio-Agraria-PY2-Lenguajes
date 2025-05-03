@@ -27,14 +27,22 @@ create table Parcela (
     zona varchar(30),
     area int
 );
-CREATE TABLE ParcelasFin(
-    nombreVege varchar(30), 
-    codigoHerramienta varchar(12),
-    idParcela int,
-    precio float,
-    primary key(nombreVege, codigoHerramienta, idParcela),
-    constraint fk_Herra foreign key (codigoHerramienta) references Herramientas(codigo),
-    constraint fk_Parcela foreign key (idParcela) references Parcela(idParcela)
+CREATE TABLE HerramientasPorParcela(
+    IdParcela int NOT NULL,
+    CodigoHerramienta varchar(12) NOT NULL,
+    primary key(CodigoHerramienta, idParcela),
+
+    constraint fk_Herramienta_Parcela foreign key (CodigoHerramienta) references Herramientas(codigo),
+    constraint fk_Parcela_Herramienta foreign key (idParcela) references Parcela(idParcela)
+);
+
+CREATE TABLE VetalesPorParcela (
+    IdParcela INT NOT NULL,
+    NombreVegetal VARCHAR(30) NOT NULL,
+    Precio FLOAT NOT NULL,
+    PRIMARY KEY (IdParcela, NombreVegetal),
+
+    CONSTRAINT FK_Vegetal_Parcela FOREIGN KEY (IdParcela) references Parcela(idParcela)
 );
  
 create table Cosechas (
