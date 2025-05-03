@@ -2,13 +2,24 @@
 
 
 import Database.MySQL.Simple
+    ( close,
+      connect,
+      defaultConnectInfo,
+      execute,
+      withTransaction,
+      query,
+      query_,
+      ConnectInfo(connectDatabase, connectHost, connectPort, connectUser,
+                  connectPassword),
+      Connection,
+      Only(..) )
 import Database.MySQL.Simple.Types (Only(..))
 import System.IO (hFlush, stdout)
 import Data.String (fromString)
 import Control.Monad.Reader
 import Data.List (nub)
 import Data.Time
-
+import Control.Monad (void)
 
 
 -- Definición de datos de la aplicación
@@ -583,17 +594,18 @@ subMenuCosecha = do
 
 
     -- Cantidad en kg
-    liftIO $ putStr "Cantidad en KG: "
-    liftIO $ hFlush stdout
-    cantidadStr <- liftIO getLine
-    let cantidad = read cantidadStr :: Int
+    cantidadEsperada <-  liftIO $ leerEntradaNumero "Ingrese los kilogramos que se esperan recoger de este vegetal: "
+    -- liftIO $ putStr "Cantidad en KG: "
+    -- liftIO $ hFlush stdout
+    -- cantidadStr <- liftIO getLine
+    -- let cantidad = read cantidadStr :: Int
 
     let estado = "Abierto" -- Tipo de estado: Abierto, Cerrado, Cancelado.
 
     let k_recogidos = 0
 
     conn <- ask
-    liftIO $ insertCosecha conn idParcela cedula fechaInicio fechaFin vegetal cantidad estado k_recogidos
+    liftIO $ insertCosecha conn idParcela cedula fechaInicio fechaFin vegetal cantidadEsperada estado k_recogidos
 
     liftIO $ putStrLn "Cosecha registrada correctamente."
 
@@ -610,8 +622,8 @@ insertCosecha conn idParcela cedula fechaInicioF fechaFinF vegetal cantidad esta
             Just fecha -> formatTime defaultTimeLocale "%Y-%m-%d" fecha
             Nothing -> "NULL" 
     _ <- execute conn
-        "INSERT INTO Cosechas (idParcela, fechainicio, fechafin, cedula, nombrevege, estadoCosecha, KilosPlanificados,  KilosRecogidos) VALUES (?,?,?,?,?,?,?,?)"
-        (idParcela, fechaInicio, fechaFin, cedula, vegetal,cantidad, estado, kilos_recogidos)
+        "INSERT INTO Cosechas (idParcela, fechainicio, fechafin, cedula, nombrevege, estadoCosecha, KilosPlanificados, KilosRecogidos) VALUES (?,?,?,?,?,?,?,?)"
+        (idParcela, fechaInicio, fechaFin, cedula, vegetal, estado, cantidad, kilos_recogidos)
     return ()
 
 
@@ -657,7 +669,34 @@ validarPosibilidadOptenerCosechaPorID conn idCosecha_Validar = do
     case resultado of 
         [Only valor] -> return $ fromIntegral valor
         _ -> return (-99) -- Codigo de error desconocido.       
+    -- return 1
 -- Fin de la funcion.
+
+-- Funcion para validar si el id de una cosecha existe.
+validarExistenciaCosechaID :: Connection -> Int -> IO Int
+validarExistenciaCosechaID conn idCosecha = do
+    resultado <- query conn "CALL sp_ExisteCosechaPorID(?)" (Only idCosecha) :: IO [Only Int]
+    case resultado of
+        [Only valor] -> return valor
+        _            -> return (-99) -- Error inesperado   
+
+validarEstadoCosechaID :: Connection -> Int -> IO Int
+validarEstadoCosechaID conn idCosecha = do
+    resultado <- query conn "CALL sp_EstadoCosechaEsAbierto(?)" (Only idCosecha) :: IO [Only Int]
+    case resultado of
+        [Only valor] -> return valor
+        _            -> return (-99) -- Error inesperado 
+
+validarTodoEnUna :: Connection -> Int -> IO Int
+validarTodoEnUna conn idCosecha = do
+    resultado <- query conn
+        "SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM Cosechas WHERE idCosecha = ?) THEN -1 \
+        \WHEN EXISTS (SELECT 1 FROM Cosechas WHERE idCosecha = ? AND estadoCosecha != 'Abierto') THEN -2 \
+        \ELSE 1 END AS Resultado"
+        (idCosecha, idCosecha) :: IO [Only Int]
+    case resultado of
+        [Only valor] -> return valor
+        _            -> return (-99)
 
 
 -- Optener los datos de una cosecha por su id 
@@ -672,13 +711,18 @@ optenerCosechaPorID conn idCosecha_Optener = do
     case resultados of
         [(idC, idP, fi, ff, ce, nv, ec, kp, kr)] -> return $ Cosecha idC idP fi ff ce nv kp ec kr
         _ -> error "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
+-- Fin de la funcion.
 
 
-
+-- Funcion para modificar el estado de una cosecha mediente su id.
 actualizarEstadoCosecha :: Connection -> Int ->  String -> Int -> IO ()
 actualizarEstadoCosecha conn idCosecha_estado nuevoEstado p_kilosRecogidos = do
     _ <- execute conn "CALL sp_ModificarEstadoCosecha(?, ?, ?)" (idCosecha_estado, nuevoEstado, p_kilosRecogidos)
+    -- _ <- query_ conn (fromString $ "CALL sp_ModificarEstadoCosecha(" ++ show idCosecha_estado ++ ", " ++ nuevoEstado ++ ", " ++ show p_kilosRecogidos ++ ")") :: IO [Only Int]
+
+    -- void $ (query_ conn "SELECT 1" :: IO [Only Int]) 
     return ()
+-- Fin de la funcion.
 
 
 -- Funcion para cerrar una cosecha, el usuario ingresara el id de la cosecha que desea cerrar y la cantidad de kilos recogidos.
@@ -688,22 +732,62 @@ cerrarCosecha = do
     liftIO $ putStrLn  ">> Apartado para el cierre de la cosecha."
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
 
-    resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
+    resultado <- liftIO $ validarTodoEnUna conn idCosechaIngreado
+    -- liftIO $ print resultado
+    -- liftIO $ hFlush stdout
+    -- _ <- liftIO $ (query_ conn "SELECT 1" :: IO [Only Int]) 
+    
     case resultado of
         -1 -> do 
-            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
+            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
             liftIO $ hFlush stdout
-            return ()
+            opcionesGenerales
         -2 -> do 
-            liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada."
+            liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada.\n"
             liftIO $ hFlush stdout
-            return ()
+            opcionesGenerales
         _ -> do
-            kilosRecogidos_Input <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
-            _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Cerrada" kilosRecogidos_Input
-            liftIO $ putStrLn "La cosecha se ha cerrado correctamente."
+            
             liftIO $ hFlush stdout
-            return ()
+            kilosRecogidos_Input <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
+            _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Cerrado" kilosRecogidos_Input
+            -- _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Abierta" kilosRecogidos_Input
+
+            -- liftIO $ hFlush stdout
+            -- _ <- liftIO $ (query_ conn "SELECT 1" :: IO [Only Int])
+            liftIO $ putStrLn "La cosecha se ha cerrado correctamente. \n"
+            liftIO $ hFlush stdout
+            opcionesGenerales
+-- Fin de la funcion.
+-- cerrarCosecha :: App ()
+-- cerrarCosecha = do
+--     conn <- ask  -- Conexión a la base de datos
+--     liftIO $ putStrLn ">> Apartado para el cierre de la cosecha."
+    
+--     idCosechaIngresado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
+
+--     -- Validar existencia de la cosecha
+--     existencia <- liftIO $ validarExistenciaCosechaID conn idCosechaIngresado
+--     case existencia of
+--         -1 -> do
+--             liftIO $ putStrLn "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
+--             liftIO $ hFlush stdout
+--             opcionesGenerales
+--         _ -> do
+--             -- Validar que esté en estado Abierto
+--             estado <- liftIO $ validarEstadoCosechaID conn idCosechaIngresado
+--             case estado of
+--                 -2 -> do
+--                     liftIO $ putStrLn "Error: La cosecha ingresada ya ha sido cerrada.\n"
+--                     liftIO $ hFlush stdout
+--                     opcionesGenerales
+--                 _ -> do
+--                     -- Continuar con el cierre
+--                     kilosRecogidos_Input <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
+--                     _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngresado "Cerrado" kilosRecogidos_Input
+--                     liftIO $ putStrLn "La cosecha se ha cerrado correctamente. \n"
+--                     liftIO $ hFlush stdout
+--                     opcionesGenerales
 
 
 mostrarDatosCosecha :: Cosecha -> IO ()
@@ -725,21 +809,21 @@ mostrarDatosCosecha p_datosCosechaMostrar = do
 consultarCosechaPorID :: App ()
 consultarCosechaPorID = do
     conn <- ask -- Este seria para para inicar la conexcion con la base de datos.
-    liftIO $ putStrLn  ">> Apartado para la consultas de cosechas por su ID."
+    liftIO $ putStrLn  ">> Apartado para la consultas de cosechas por su ID.\n"
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea ver: "
 
     resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
 
     case resultado of
         -1 -> do 
-            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
+            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
             liftIO $ hFlush stdout
-            return ()
+            opcionesGenerales
 
         _ -> do
             datosCosecha <- liftIO $ optenerCosechaPorID conn idCosechaIngreado
             _ <- liftIO $ mostrarDatosCosecha datosCosecha
-            return ()
+            opcionesGenerales
 
 
 eliminarCosechaDB :: Connection -> Int -> IO ()
@@ -751,24 +835,25 @@ eliminarCosechaDB conn idCosecha_eliminar = do
 cancelarCosecha ::  App ()
 cancelarCosecha = do
     conn <- ask  -- Este seria para para inicar la conexcion con la base de datos.
-    liftIO $ putStrLn  ">> Apartado para el cancele una cosecha."
+    liftIO $ putStrLn  ">> Apartado para el cancele una cosecha.\n"
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
 
     resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
     case resultado of
         -1 -> do 
-            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema."
+            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
             liftIO $ hFlush stdout
-            return ()
+            opcionesGenerales
         -2 -> do 
-            liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada, no puede ser cancelada.."
+            liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada, no puede ser cancelada.\n"
             liftIO $ hFlush stdout
-            return ()
+            opcionesGenerales
         _ -> do
             _ <- liftIO $ eliminarCosechaDB conn idCosechaIngreado 
-            liftIO $ putStrLn "La cosecha se ha cancelado correctamente."
+            liftIO $ putStrLn "La cosecha se ha cancelado correctamente.\n"
             liftIO $ hFlush stdout
-            return ()
+            opcionesGenerales
 -- Fin de la funcion.
 
 
+-- Ok, voy a estar trabajando en esta funcion para el registro de una cosecha, de momento ya tenia esto programado, pero me esta dando algunos problemas y faltaban validaciones:

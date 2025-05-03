@@ -58,27 +58,71 @@ use fincaAgricola$$
 create procedure sp_ValidarPosibilidaOptenerCosechaID (in p_idCosecha int) 
 begin 
 	-- Variables para para los datos que se retornaran en caso de error.
-	declare existe int;
-	declare estado varchar(15);
-    
+	declare existe int default 0;
+	declare estado varchar(15) default '';
+    declare resultado int default 0;
     select count(*) into existe from Cosechas where idCosecha = p_idCosecha;
     
     -- Validar que la cosecha exista.
     if existe = 0 then
-		select -1 as Resultado;
+		-- select -1 as Resultado;
+        set resultado := -1;
 	else
 		-- Ahora validar que el estado sea "Abierto".
 		select estadoCosecha into estado from Cosechas where idCosecha = p_idCosecha;
 		if estado != 'Abierto' then
-			select -2 as Resultado;
+			-- select -2 as Resultado;
+            set resultado := -2;
 		else
 			-- En caso de que no haya error entonces devolvemos los datos de la tabla.
-            select 1 as Resultado;
+            -- select 1 as Resultado;
+            set resultado := 1;
 		end if;
 	end if;
+    SELECT resultado AS Resultado; -- Devolver el resultado en un solo elemento, esto evita que se se espere que se devulvan todos los posibles valores a haskell.
 end $$
 DELIMITER ;
--- call sp_OptenerCosechaID();
+-- CALL sp_ValidarPosibilidaOptenerCosechaID(2);
+
+DELIMITER $$
+USE fincaAgricola$$
+
+CREATE PROCEDURE sp_ExisteCosechaPorID (IN p_idCosecha INT)
+BEGIN
+    DECLARE existe INT DEFAULT 0;
+
+    SELECT COUNT(*) INTO existe FROM Cosechas WHERE idCosecha = p_idCosecha;
+
+    IF existe = 0 THEN
+        SELECT -1 AS Resultado; -- No existe
+    ELSE
+        SELECT 1 AS Resultado;  -- Existe
+    END IF;
+END$$
+
+DELIMITER ;
+
+DELIMITER $$
+USE fincaAgricola$$
+
+CREATE PROCEDURE sp_EstadoCosechaEsAbierto (IN p_idCosecha INT)
+BEGIN
+    DECLARE estado VARCHAR(15) DEFAULT '';
+
+    SELECT estadoCosecha INTO estado FROM Cosechas WHERE idCosecha = p_idCosecha;
+
+    IF estado != 'Abierto' THEN
+        SELECT -2 AS Resultado; -- No está en estado Abierto
+    ELSE
+        SELECT 1 AS Resultado;  -- Sí está en estado Abierto
+    END IF;
+END$$
+
+DELIMITER ;
+
+
+
+
 
 -- Procedure para optener una cosecha especifica por su id, en caso de no encontrar la cosecha devolveremos un codigo de error.
 delimiter $$
@@ -100,12 +144,13 @@ begin
 
     update Cosechas
     set 
-    estadoCosecha = p_Estado.
+    estadoCosecha = p_Estado,
     KilosRecogidos = p_kilosRecolectados
     where idCosecha = p_idCosecha;
     
 end $$
 DELIMITER ; 
+-- call sp_ModificarEstadoCosecha(1, 'Cerrado', 3);
 -- drop procedure sp_ModificarEstadoCosecha;
 
 -- Procedure para eliminar una cosecha.
