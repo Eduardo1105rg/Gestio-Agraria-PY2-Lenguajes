@@ -21,6 +21,7 @@ import Data.List (nub)
 import Data.Time
 import Control.Monad (void)
 import Data.List (nub)
+import Control.Monad.ST (ST)
 
 -- Definición de datos de la aplicación
 data Trabajador = Trabajador {
@@ -145,12 +146,13 @@ subMenu _ = do
 --Esta parte es el sub menu de opciones generales - falta darle funcionalidad jsjsjs
 opcionesGenerales :: App ()
 opcionesGenerales = do
-    liftIO $ putStrLn "\n1. Gestión de cosechas"
-    liftIO $ putStrLn "2. Cierre de cosechas"
-    liftIO $ putStrLn "3. Consultar cosecha"
-    liftIO $ putStrLn "4. Cancelación o modificación de cosecha"
-    liftIO $ putStrLn "5. Consulta disponibilidad de parcela"
-    liftIO $ putStrLn "6. Volver"
+    liftIO $ putStrLn "\n1. Gestion de cosechas"
+    liftIO $ putStrLn "2. Cierre de cosechas."
+    liftIO $ putStrLn "3. Consultar cosecha por su ID."
+    liftIO $ putStrLn "4. Cancelacion de cosecha."
+    liftIO $ putStrLn "5. Modificar datos de una cosecha."
+    liftIO $ putStrLn "6. Consulta disponibilidad de parcela"
+    liftIO $ putStrLn "7. Volver"
     liftIO $ putStr "Opción: "
     liftIO $ hFlush stdout
     opcionSubG <- liftIO getLine
@@ -159,8 +161,9 @@ opcionesGenerales = do
         "2" -> cerrarCosecha
         "3" -> consultarCosechaPorID
         "4" -> cancelarCosecha
-        "5" -> liftIO $ putStrLn "Entrando a Consulta disponibilidad de parcela"
-        "6" -> menu -- Eso se debe de cambiar en todas las lugares que redireccionen a otra funcion.
+        "5" -> modificarCosecha
+        "6" -> liftIO $ putStrLn "Entrando a Consulta disponibilidad de parcela"
+        "7" -> menu -- Eso se debe de cambiar en todas las lugares que redireccionen a otra funcion.
         _   -> do
             liftIO $ putStrLn "Opción inválida"
             opcionesGenerales 
@@ -690,7 +693,7 @@ subMenuCosecha = do
     --         liftIO $ putStrLn "Fecha en formato incorrecto. Intenta de nuevo."
     --         subMenuCosecha
 
-    -- Tipo de vegetal
+    -- Tipo de vegetal (Aqui tambien podriamos mostrar los tipos de vegetales que tiene la parcela ingresada, pero como esta antes de la validacion, da problemas.)
     vegetal  <- liftIO $ leerEntradaTexto "Tipo de vegetal a cosechar: "
 
     -- Cantidad en kg
@@ -775,7 +778,7 @@ parcelaDisponible conn idParcela fechaInicio fechaFin = do
 vegetalPerteneceAParcela :: Connection -> Int -> String -> IO Bool
 vegetalPerteneceAParcela conn idParcela vegetal = do
     resultado <- query conn 
-        "SELECT COUNT(*) FROM VetalesPorParcela WHERE IdParcela = ? AND NombreVegetal = ?" 
+        "SELECT COUNT(*) FROM VegetalesPorParcela WHERE IdParcela = ? AND NombreVegetal = ?" 
         (idParcela, vegetal) :: IO [Only Int]
     
     return $ case resultado of
@@ -790,7 +793,7 @@ fechasValidas _ _ = False
 -- Fin de la funcion.
 
 
--- Funcion para hacer de forma separada todas las validaciones de los datos de la cosecha que se va a registrar.
+-- Funcion para hacer de forma separada todas las validaciones de los datos de la cosecha que se va a registrar. (En esta podrias imprimir mesanjes de personalizados por cada false que se tenga.)
 validarDatosCosechaEnRegistro :: Connection -> String -> Int -> Maybe Day -> Maybe Day -> String -> IO Bool
 validarDatosCosechaEnRegistro conn cedula idParcela fechaInicio fechaFin vegetal = do
     trabajadorValido <- trabajadorExiste conn cedula
@@ -940,7 +943,7 @@ consultarCosechaPorID = do
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea ver: "
 
     resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
-    liftIO $ print resultado
+    -- liftIO $ print resultado
     case resultado of
         -1 -> do 
             liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
@@ -956,11 +959,12 @@ consultarCosechaPorID = do
             opcionesGenerales
 -- Fin de la funcion.
 
-
+-- Funcion para eliminar las una cosecha por su id de la bases de datos.
 eliminarCosechaDB :: Connection -> Int -> IO ()
 eliminarCosechaDB conn idCosecha = do
     _ <- execute conn "DELETE FROM Cosechas WHERE idCosecha = ?" (Only idCosecha)
     return ()
+-- Fin de la funcion.
 
 
 -- Funcion para eliminar una cosecha que todavia se encuentre abierta, mediante su id.
@@ -988,4 +992,294 @@ cancelarCosecha = do
 -- Fin de la funcion.
 
 
--- Ok, voy a estar trabajando en esta funcion para el registro de una cosecha, de momento ya tenia esto programado, pero me esta dando algunos problemas y faltaban validaciones:
+-- Funcion para modificar los datos de una cosecha.
+modificarCosecha :: App ()
+modificarCosecha = do
+    conn <- ask
+    liftIO $ putStrLn ">> Apartado para modificar los datos de una cosecha."
+
+    -- id de la cosecha a modificar.
+    idCosecha_modificar <- liftIO $ leerEntradaNumero "Ingrese el ID de la cosecha que desea modificar: "
+
+    resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosecha_modificar
+
+    case resultado of
+        -1 -> do 
+            liftIO $ putStrLn  "Error: El id de cosecha ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
+            liftIO $ hFlush stdout
+            opcionesGenerales
+
+        -2 -> do 
+            liftIO $ putStrLn  "Error: La cosecha ingresada ya ha sido cerrada por lo tanto no puede ser modificada.\n"
+            liftIO $ hFlush stdout
+            opcionesGenerales
+
+        _ -> do
+            -- liftIO $ print "Pass 1."
+            datosCosecha_modificar <- liftIO $ optenerCosechaPorID conn idCosecha_modificar
+
+            -- Extraer los valores previos de `datosCosecha_modificar`
+            case datosCosecha_modificar of
+                Just cosecha -> do
+                    -- Cedula del trabajador
+                    cedula_nueva <- liftIO $ auxModificarCedulaCosecha conn (cedulaTrabajador cosecha)
+
+                    -- ID de la parcela
+                    idParcela_modificar <- liftIO $ auxModificarParcelaCosecha conn (idParcelac cosecha)
+
+                    -- Fecha de inicio
+                    fechaInicio_modificar <- liftIO $ auxModificarFechaInicioCosecha conn (fechaInicio cosecha)
+
+                    -- Fecha de finalización
+                    fechaFin_modificar <- liftIO $ auxModificarFechaFinalizacionCosecha conn (fechaFin cosecha)
+
+                    -- Tipo de vegetal
+                    vegetal_modificar <- liftIO $ auxModificarVegetalCosecha conn (vegetal cosecha)
+
+                    -- Cantidad en kg
+                    cantidadEsperada_modificar <- liftIO $ auxModificarCantidaCosecha conn (cantidadKg cosecha) 
+
+                    validacionParaRegistrarCosecha <- liftIO $ validarDatosCosechaEnModificacion conn cedula_nueva (idParcelac cosecha) idParcela_modificar fechaInicio_modificar fechaFin_modificar vegetal_modificar idCosecha_modificar-- Comporbar si los datos ingresados son correctos.
+
+                    -- Comprobar el estado de la validacion para ver si podermos hacer el registro o no.
+                    if validacionParaRegistrarCosecha
+                        then do
+                            liftIO $ modificarCosechaDB conn idCosecha_modificar idParcela_modificar cedula_nueva  fechaInicio_modificar fechaFin_modificar vegetal_modificar cantidadEsperada_modificar
+                            liftIO $ putStrLn "La cosecha se ha registrado exitosamente."
+                            opcionesGenerales
+                        else do
+                            liftIO $ putStrLn "Error: No se pudo registrar la cosecha debido a una validación fallida."
+                            opcionesGenerales
+
+                    -- Volver al menu de la opciones generales.
+                    opcionesGenerales
+                
+                Nothing -> do
+                    liftIO $ putStrLn "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
+                    opcionesGenerales
+
+
+
+
+-- Fin de la funcion.
+
+-- Funcion para que el usuario decida si quiere cambiar la cedula del trabajador asignado a una cosecha, en caso de que el usuario no desee cambiarlo, se devolvera el dato anterior, si quiere cambiarlo se devolvera el nuevo dato ingresado.
+auxModificarCedulaCosecha :: Connection -> String -> IO String
+auxModificarCedulaCosecha conn cedula_anterior = do 
+    liftIO $ do
+        putStrLn $ "\n>>Cedula actual del trabajador asignado a esta cosecha: " ++ cedula_anterior
+        putStrLn "\n¿Desea modificar la cedula del trabajador asignado?"
+        putStrLn "1. Si"
+        putStrLn "2. No (Mantener actual)"
+        putStr "Opcion: "
+        hFlush stdout
+
+    opcion <- liftIO getLine
+
+    case opcion of
+        "1" -> liftIO $ leerEntradaTexto "Ingrese la nueva cedula del trabajador: "
+        "2" -> return cedula_anterior
+        _   -> do
+            liftIO $ putStrLn "Opcion invalida. Inténtelo de nuevo."
+            auxModificarCedulaCosecha conn cedula_anterior
+    -- case opcion of
+    --     "1" -> do
+    --         nuevaCedula <- liftIO $ do leerEntradaTexto "Ingresa la cedula del nuevo trabajador asignado a esta cosecha: "
+    --         return nuevaCedula
+
+    --     "2" -> 
+    --         return cedula_anterior
+
+    --     _ -> do
+    --         liftIO $ putStrLn "Opción inválida"
+    --         auxModificarCedulaCosecha conn cedula_anterior 
+-- Fin de la funcion.
+
+
+auxModificarParcelaCosecha :: Connection -> Int -> IO Int
+auxModificarParcelaCosecha conn p_idParcela_anterior = do 
+    liftIO $ do
+        putStrLn $ "\n>> ID de la parcela actual: " ++ show p_idParcela_anterior
+        putStrLn "\n¿Desea modificar la parcela?"
+        putStrLn "1. Si"
+        putStrLn "2. No (Mantener actual)"
+        putStr "Opcion: "
+        hFlush stdout
+
+    opcion <- liftIO getLine
+
+    case opcion of
+        "1" -> liftIO $ leerEntradaNumero "Ingrese el nuevo ID de la parcela: "
+        "2" -> return p_idParcela_anterior
+        _   -> do
+            liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
+            auxModificarParcelaCosecha conn p_idParcela_anterior
+
+    -- case opcion of
+    --     "1" -> do
+    --         nuevoIdParcela <- liftIO $ do leerEntradaNumero "Ingresa la cedula del nuevo trabajador asignado a esta cosecha: "
+    --         return nuevoIdParcela
+
+    --     "2" -> 
+    --         return p_idParcela_anterior
+
+    --     _ -> do
+    --         liftIO $ putStrLn "Opción inválida"
+    --         auxModificarParcelaCosecha conn p_idParcela_anterior 
+-- Fin de la funcion.
+
+
+
+auxModificarFechaInicioCosecha :: Connection -> Day -> IO Day
+auxModificarFechaInicioCosecha conn p_fechaInicio_anterior = do 
+    liftIO $ do
+        putStrLn $ "\n>> Fecha de inicio actual: " ++ show p_fechaInicio_anterior
+        putStrLn "\n¿Desea modificar la fecha de inicio?"
+        putStrLn "1. Si"
+        putStrLn "2. No (Mantener actual)"
+        putStr "Opcion: "
+        hFlush stdout
+
+    opcion <- liftIO getLine
+    case opcion of
+        "1" -> do
+            nuevaFechaInicioSTR <- liftIO $ leerEntradaTexto "Ingrese la nueva fecha de inicio (ej: 30/04/2025): "
+            let formato = "%d/%m/%Y"
+            case parseTimeM True defaultTimeLocale formato nuevaFechaInicioSTR :: Maybe Day of
+                Just nuevaFecha -> return nuevaFecha
+                Nothing -> do
+                    liftIO $ putStrLn "Error: Fecha invalida. Intentelo de nuevo."
+                    auxModificarFechaInicioCosecha conn p_fechaInicio_anterior
+        "2" -> return p_fechaInicio_anterior
+        _   -> do
+            liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
+            auxModificarFechaInicioCosecha conn p_fechaInicio_anterior
+-- Fin de la funcion.
+
+
+auxModificarFechaFinalizacionCosecha :: Connection -> Day -> IO Day
+auxModificarFechaFinalizacionCosecha conn p_fechaFinalizacion_anterior = do 
+    liftIO $ do
+        putStrLn $ "\n>> Fecha de finalizacion actual: " ++ show p_fechaFinalizacion_anterior
+        putStrLn "\n¿Desea modificar la fecha de finalizacion?"
+        putStrLn "1. Si"
+        putStrLn "2. No (Mantener actual)"
+        putStr "Opcion: "
+        hFlush stdout
+
+    opcion <- liftIO getLine
+    case opcion of
+        "1" -> do
+            nuevaFechaFinalizacionSTR <- liftIO $ leerEntradaTexto "Ingrese la nueva fecha de finalizacion (ej: 30/04/2026): "
+            let formato = "%d/%m/%Y"
+            case parseTimeM True defaultTimeLocale formato nuevaFechaFinalizacionSTR :: Maybe Day of
+                Just nuevaFecha -> return nuevaFecha
+                Nothing -> do
+                    liftIO $ putStrLn "Error: Fecha invalida. Intentelo de nuevo."
+                    auxModificarFechaFinalizacionCosecha conn p_fechaFinalizacion_anterior
+        "2" -> return p_fechaFinalizacion_anterior
+        _   -> do
+            liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
+            auxModificarFechaFinalizacionCosecha conn p_fechaFinalizacion_anterior
+-- Fin de la funcion.
+
+
+auxModificarVegetalCosecha :: Connection -> String -> IO String
+auxModificarVegetalCosecha conn p_vegetal_anterior = do 
+    liftIO $ do
+        putStrLn $ "\n>> Vegetal actual de la cosecha: " ++ p_vegetal_anterior
+        putStrLn "\n¿Desea modificar el vegetal asignado?"
+        putStrLn "1. Si"
+        putStrLn "2. No (mantener actual)"
+        putStr "Opcion: "
+        hFlush stdout
+
+    opcion <- liftIO getLine
+    case opcion of
+        "1" -> liftIO $ leerEntradaTexto "Ingrese el nuevo vegetal asignado a la cosecha: "
+        "2" -> return p_vegetal_anterior
+        _   -> do
+            liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
+            auxModificarVegetalCosecha conn p_vegetal_anterior
+
+-- Fin de la funcion.
+
+auxModificarCantidaCosecha :: Connection -> Int -> IO Int
+auxModificarCantidaCosecha conn p_cantidad_anterior = do 
+    liftIO $ do
+        putStrLn $ "\n>> Cantidad del vegetal que se espera recoger actual: " ++ show p_cantidad_anterior
+        putStrLn "\n¿Desea modificar la cantidad esperada?"
+        putStrLn "1. Si"
+        putStrLn "2. No (Mantener actual)"
+        putStr "Opcion: "
+        hFlush stdout
+
+    opcion <- liftIO getLine
+
+    case opcion of
+        "1" -> liftIO $ leerEntradaNumero "Ingrese la nueva cantidad que espera recoger: "
+        "2" -> return p_cantidad_anterior
+        _   -> do
+            liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
+            auxModificarCantidaCosecha conn p_cantidad_anterior
+-- Fin de la funcion.
+
+
+
+-- Funcion para hacer de forma separada todas las validaciones de los datos de la cosecha que se va a registrar. (En esta podrias imprimir mesanjes de personalizados por cada false que se tenga.)
+validarDatosCosechaEnModificacion :: Connection -> String -> Int -> Int -> Day -> Day -> String -> Int -> IO Bool
+validarDatosCosechaEnModificacion conn cedula idParcelaAnterior idParcelaNueva fechaInicio fechaFin vegetal p_codigo_cosecha = do
+    liftIO $ putStrLn "Datos que llegaron."
+
+    print (idParcelaAnterior, idParcelaNueva)
+    
+    trabajadorValido <- trabajadorExiste conn cedula
+    print trabajadorValido
+
+    parcelaValida <- parcelaExiste conn idParcelaNueva
+    print parcelaValida
+
+    let fechasOk = fechasValidas (Just fechaInicio) (Just fechaFin)  -- Ahora usamos Just para mantener la validación existente
+    parcelaDisponibleValida <- 
+        if idParcelaAnterior == idParcelaNueva
+            then parcelaDisponibleExcluyendoActual conn idParcelaNueva p_codigo_cosecha fechaInicio fechaFin
+            else parcelaDisponible conn idParcelaNueva fechaInicio fechaFin
+    print fechasOk
+    print parcelaDisponibleValida
+
+    vegetalValido <- vegetalPerteneceAParcela conn idParcelaNueva vegetal
+    print vegetalValido
+
+    return $ trabajadorValido && parcelaValida && fechasOk && parcelaDisponibleValida && vegetalValido
+-- Fin de la funcion.
+
+parcelaDisponibleExcluyendoActual :: Connection -> Int -> Int -> Day -> Day -> IO Bool
+parcelaDisponibleExcluyendoActual conn idParcela idCosechaActual fechaInicio fechaFin = do
+    resultado <- query conn 
+        "SELECT COUNT(*) FROM Cosechas WHERE idParcela = ? AND estadoCosecha = 'Abierto' \
+        \AND idCosecha != ? \
+        \AND ((fechainicio BETWEEN ? AND ?) OR (fechafin BETWEEN ? AND ?))"
+        (idParcela, idCosechaActual, fechaInicio, fechaFin, fechaInicio, fechaFin) :: IO [Only Int]
+    print resultado
+    return $ case resultado of
+        [Only count] -> count == 0
+        _            -> False
+-- Fin de la funcion.
+
+
+-- Funcion para registrar los datos de una cosecha en la base de datos.
+modificarCosechaDB :: Connection -> Int -> Int -> String -> Day -> Day -> String -> Int -> IO ()
+modificarCosechaDB conn idCosecha idParcela cedula fechaInicio fechaFin vegetal cantidad = do
+    let fechaInicioSQL = formatTime defaultTimeLocale "%Y-%m-%d" fechaInicio
+    let fechaFinSQL = formatTime defaultTimeLocale "%Y-%m-%d" fechaFin
+
+    _ <- execute conn
+        "UPDATE Cosechas SET idParcela = ?, fechainicio = ?, fechafin = ?, cedula = ?, nombrevege = ?, KilosPlanificados = ? \
+        \WHERE idCosecha = ?"
+        (idParcela, fechaInicioSQL, fechaFinSQL, cedula, vegetal, cantidad, idCosecha)
+    
+    return ()
+
+
+
+
