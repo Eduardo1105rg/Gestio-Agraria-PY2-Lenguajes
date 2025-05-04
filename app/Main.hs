@@ -17,12 +17,13 @@ import Database.MySQL.Simple.Types (Only(..))
 import System.IO (hFlush, stdout)
 import Data.String (fromString)
 import Control.Monad.Reader
-import Data.List (nub)
-import Data.Time
+import Data.List (nub, groupBy, sortOn)
+import Data.Time ( Day, parseTimeM, defaultTimeLocale, formatTime )
 import Control.Monad (void)
 import Data.List (nub)
 import Control.Monad.ST (ST)
-
+import Data.Time.Calendar (addDays)
+import Data.Function (on)
 -- Definición de datos de la aplicación
 data Trabajador = Trabajador {
     nombre :: String,
@@ -162,7 +163,7 @@ opcionesGenerales = do
         "3" -> consultarCosechaPorID
         "4" -> cancelarCosecha
         "5" -> modificarCosecha
-        "6" -> liftIO $ putStrLn "Entrando a Consulta disponibilidad de parcela"
+        "6" -> consultaDisponibilidadParcelas
         "7" -> menu -- Eso se debe de cambiar en todas las lugares que redireccionen a otra funcion.
         _   -> do
             liftIO $ putStrLn "Opción inválida"
@@ -524,7 +525,7 @@ insertarParcela conn nombre zona area = do
     return ()
 -- Fin de la funcion.
 
-
+-- Funcion para optener el ultimo id que se genero en la sesion actual despues de un insert a la base de datos.
 obtenerUltimoID :: Connection -> IO Int
 obtenerUltimoID conn = do
     result <- query_ conn "SELECT LAST_INSERT_ID()" :: IO [Only Int]
@@ -536,12 +537,6 @@ obtenerUltimoID conn = do
     
 crearParcelaExtraDB :: Connection -> [(String, Float)] -> [Herramienta] -> Int -> IO ()
 crearParcelaExtraDB conn  vegetalesP herramientasP idParcela = do
-    -- conn <- ask
-    -- liftIO $ forM_ vegetalesP $ \(nombreVege, precio) -> 
-    --     forM_ herramientasP $ \herramienta -> do
-    --         execute conn 
-    --             "INSERT IGNORE INTO ParcelasFin(nombreVege, codigoHerramienta, idParcela, precio) VALUES (?,?,?,?)" 
-    --             (nombreVege, codigoHA herramienta, idParcela, precio)
  -- Insertar vegetales en la base de datos
     mapM_ (\(nombreV, precioV) -> registrarVegetalesParcela conn nombreV precioV idParcela) vegetalesP
 
@@ -669,29 +664,9 @@ subMenuCosecha = do
     let formato = "%d/%m/%Y"
     let fechaInicio = parseTimeM True defaultTimeLocale formato fechaInicioStr :: Maybe Day
 
-    -- case fechaInicio of
-    --     Just fecha -> do
-            
-    --         let fechaInicioF = formatTime defaultTimeLocale "%Y-%m-%d" fecha
-    --         liftIO $ putStrLn $ "Fecha en formato MySQL: " ++ fechaInicioF
-
-    --     Nothing -> do
-    --         liftIO $ putStrLn "Fecha en formato incorrecto. Intenta de nuevo."
-    --         subMenuCosecha
-
-   
     -- Fecha final
     fechaFinStr <- liftIO $ leerEntradaTexto "Fecha de fin (ej: 30/04/2026): "
     let fechaFin = parseTimeM True defaultTimeLocale formato fechaFinStr :: Maybe Day
-
-    -- case fechaFin of
-    --     Just fecha -> do
-    --         let fechaFinF = formatTime defaultTimeLocale "%Y-%m-%d" fecha
-    --         liftIO $ putStrLn $ "Fecha en formato MySQL: " ++ fechaFinF
-
-    --     Nothing -> do
-    --         liftIO $ putStrLn "Fecha en formato incorrecto. Intenta de nuevo."
-    --         subMenuCosecha
 
     -- Tipo de vegetal (Aqui tambien podriamos mostrar los tipos de vegetales que tiene la parcela ingresada, pero como esta antes de la validacion, da problemas.)
     vegetal  <- liftIO $ leerEntradaTexto "Tipo de vegetal a cosechar: "
@@ -713,14 +688,16 @@ subMenuCosecha = do
     if validacionParaRegistrarCosecha
         then do
             liftIO $ insertCosecha conn idParcela_cosechar cedula fechaInicio fechaFin vegetal cantidadEsperada estado k_recogidos
-            liftIO $ putStrLn "La cosecha se ha registrado exitosamente."
+            liftIO $ putStrLn "\nLa cosecha se ha registrado exitosamente."
+            id_cosecha <- liftIO $ obtenerUltimoID conn
+
+            liftIO $ putStrLn $ "\n>> ID de la cosecha agregada: " ++ show id_cosecha
+
             opcionesGenerales
         else do
             liftIO $ putStrLn "Error: No se pudo registrar la cosecha debido a una validación fallida."
             subMenuCosecha
-    -- conn <- ask
-    -- liftIO $ insertCosecha conn idParcela_cosechar cedula fechaInicio fechaFin vegetal cantidadEsperada estado k_recogidos
-    
+
     -- Volver al menu de la opciones generales.
     opcionesGenerales
 -- Fin de la funcion.
@@ -1057,10 +1034,6 @@ modificarCosecha = do
                 Nothing -> do
                     liftIO $ putStrLn "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
                     opcionesGenerales
-
-
-
-
 -- Fin de la funcion.
 
 -- Funcion para que el usuario decida si quiere cambiar la cedula del trabajador asignado a una cosecha, en caso de que el usuario no desee cambiarlo, se devolvera el dato anterior, si quiere cambiarlo se devolvera el nuevo dato ingresado.
@@ -1082,17 +1055,6 @@ auxModificarCedulaCosecha conn cedula_anterior = do
         _   -> do
             liftIO $ putStrLn "Opcion invalida. Inténtelo de nuevo."
             auxModificarCedulaCosecha conn cedula_anterior
-    -- case opcion of
-    --     "1" -> do
-    --         nuevaCedula <- liftIO $ do leerEntradaTexto "Ingresa la cedula del nuevo trabajador asignado a esta cosecha: "
-    --         return nuevaCedula
-
-    --     "2" -> 
-    --         return cedula_anterior
-
-    --     _ -> do
-    --         liftIO $ putStrLn "Opción inválida"
-    --         auxModificarCedulaCosecha conn cedula_anterior 
 -- Fin de la funcion.
 
 
@@ -1114,18 +1076,6 @@ auxModificarParcelaCosecha conn p_idParcela_anterior = do
         _   -> do
             liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
             auxModificarParcelaCosecha conn p_idParcela_anterior
-
-    -- case opcion of
-    --     "1" -> do
-    --         nuevoIdParcela <- liftIO $ do leerEntradaNumero "Ingresa la cedula del nuevo trabajador asignado a esta cosecha: "
-    --         return nuevoIdParcela
-
-    --     "2" -> 
-    --         return p_idParcela_anterior
-
-    --     _ -> do
-    --         liftIO $ putStrLn "Opción inválida"
-    --         auxModificarParcelaCosecha conn p_idParcela_anterior 
 -- Fin de la funcion.
 
 
@@ -1239,7 +1189,7 @@ validarDatosCosechaEnModificacion conn cedula idParcelaAnterior idParcelaNueva f
     parcelaValida <- parcelaExiste conn idParcelaNueva
     print parcelaValida
 
-    let fechasOk = fechasValidas (Just fechaInicio) (Just fechaFin)  -- Ahora usamos Just para mantener la validación existente
+    let fechasOk = fechasValidas (Just fechaInicio) (Just fechaFin)  
     parcelaDisponibleValida <- 
         if idParcelaAnterior == idParcelaNueva
             then parcelaDisponibleExcluyendoActual conn idParcelaNueva p_codigo_cosecha fechaInicio fechaFin
@@ -1280,6 +1230,111 @@ modificarCosechaDB conn idCosecha idParcela cedula fechaInicio fechaFin vegetal 
     
     return ()
 
+--  Funcion para el menu de despliegue del menu para la consulta de la deisponibilidad de parcelas en un rango de fechas especifico.
+consultaDisponibilidadParcelas :: App ()
+consultaDisponibilidadParcelas = do
+    conn <- ask 
+    liftIO $ do
+        putStrLn "\n>> == Apartado para la consulta de la disponibilida de parcelas por rango de fechas."
+        putStrLn "1. Ver las parcelas disponibles en un rango de fechas."
+        putStrLn "2. Ver estado de las parcelas por dia en rango de fechas."
+        putStrLn "3. Volver"
+        putStr "Opcion: "
+        hFlush stdout
 
+    opcion <- liftIO getLine
+    case opcion of
+        "1" -> do
+            liftIO $ putStrLn "\nIngrese el rango de fechas:"
+            fechaInicio <- liftIO solicitarFechas
+            fechaFin <- liftIO solicitarFechas
+            parcelas <- liftIO $ obtenerParcelasDisponibles conn fechaInicio fechaFin
+            liftIO $ do
+                putStrLn "\n>> Parcelas disponibles:"
+                if null parcelas
+                    then putStrLn "   > No hay parcelas disponibles en el rango de fechas indicado."
+                    else mapM_ (\idParcela -> putStrLn $ "   > ID: " ++ show idParcela) parcelas
+            consultaDisponibilidadParcelas 
+
+        "2" -> do
+            liftIO $ putStrLn "\nIngrese el rango de fechas:"
+            fechaInicio <- liftIO solicitarFechas
+            fechaFin <- liftIO solicitarFechas
+            estados <- liftIO $ obtenerEstadoParcelasPorDia conn fechaInicio fechaFin
+            liftIO $ mostrarEstadoParcelasAgrupadas estados  
+            consultaDisponibilidadParcelas
+
+        "3" -> opcionesOperativas 
+
+        _   -> liftIO (putStrLn "Opción inválida") >> consultaDisponibilidadParcelas
+-- Fin de la funcion.
+
+-- Funcion para permitir el ingreso de fechas de forma mas facil y con validaciones a los usuario.
+solicitarFechas :: IO Day
+solicitarFechas = do
+    liftIO $ do
+        nuevaFechaFinalizacionSTR <- liftIO $ leerEntradaTexto "Ingrese la nueva fecha de finalizacion (ej: 30/04/2026): "
+        let formato = "%d/%m/%Y"
+        case parseTimeM True defaultTimeLocale formato nuevaFechaFinalizacionSTR :: Maybe Day of
+            Just nuevaFecha -> return nuevaFecha
+            Nothing -> do
+                liftIO $ putStrLn "Error: Fecha invalida. Intentelo de nuevo."
+                solicitarFechas 
+-- Fin de la funcion.
+
+-- Funcion para hacer la consulta a la base de datos para optener todas las parcelas que esten disponibles en el rango de fechas indicado.
+obtenerParcelasDisponibles :: Connection -> Day -> Day -> IO [Int]
+obtenerParcelasDisponibles conn fechaInicio fechaFin = do
+    resultados <- query conn
+        "SELECT DISTINCT idParcela FROM Parcela \
+        \WHERE idParcela NOT IN \
+        \(SELECT idParcela FROM Cosechas WHERE estadoCosecha = 'Abierto' \
+        \AND ((fechainicio BETWEEN ? AND ?) OR (fechafin BETWEEN ? AND ?)))"
+        (fechaInicio, fechaFin, fechaInicio, fechaFin) :: IO [Only Int]
+
+    return $ map fromOnly resultados
+-- Fin de la funcion.
+
+
+-- Consulta a la base de datos para optener por dia el estado de las parcelas en un rango de fechas indicado.
+obtenerEstadoParcelasPorDia :: Connection -> Day -> Day -> IO [(Int, String, String)]
+obtenerEstadoParcelasPorDia conn fechaInicio fechaFin = do
+    let diasEnRango = [fechaInicio .. fechaFin]  -- Genera la lista de fechas
+
+    resultados <- forM diasEnRango $ \fecha -> do
+        let fechaStr = formatTime defaultTimeLocale "%Y-%m-%d" fecha  
+        
+        query conn
+            "SELECT idParcela, ? AS fecha, \
+            \(CASE WHEN EXISTS (SELECT 1 FROM Cosechas WHERE idParcela = Parcela.idParcela AND estadoCosecha = 'Abierto' \
+            \AND fechainicio <= ? AND fechafin >= ?) \
+            \THEN 'Utilizada' ELSE 'Disponible' END) AS estado \
+            \FROM Parcela"
+            (fechaStr, fechaStr, fechaStr) :: IO [(Int, String, String)]
+
+    return $ concat resultados
+-- Fin de la funcion.
+
+-- Esta seria la funcion que se encarga de agrupar y ordenar los datos de las parcelas que retorno la consulta a la base de datos.
+mostrarEstadoParcelasAgrupadas :: [(Int, String, String)] -> IO ()
+mostrarEstadoParcelasAgrupadas resultados = do
+    -- Ordenamos primero por idParcela para agrupar correctamente
+    let resultadosOrdenados = sortOn (\(idParcela, _, _) -> idParcela) resultados
+
+    -- Agrupamos por idParcela comparando solo el primer elemento de la tupla
+    let agrupados = groupBy (\(id1, _, _) (id2, _, _) -> id1 == id2) resultadosOrdenados
+
+    -- Mostramos cada grupo
+    mapM_ mostrarParcelaEnRangoFecha agrupados
+-- Fin de la funcion.
+
+-- Funcion para mostrar los datos de las parcelas procesados, para lo de consulta de parcelas por rango de fechas
+mostrarParcelaEnRangoFecha :: [(Int, String, String)] -> IO ()
+mostrarParcelaEnRangoFecha parcelaDatos = do
+    case parcelaDatos of
+        ((idParcela, _, _):_) -> do
+            putStrLn $ "\n>> Parcela: " ++ show idParcela
+            mapM_ (\(_, fecha, estado) -> putStrLn $ "   > Fecha: " ++ fecha ++ " -> " ++ estado) parcelaDatos
+-- Fin de la funcion.
 
 
