@@ -100,7 +100,7 @@ main = do
     putStrLn "Intentando conectar a la base de datos..."
     --Datos para conectarme a la base
     let connectInfo = defaultConnectInfo {
-            connectHost = "172.27.133.169",
+            connectHost = "172.22.112.1",
             connectPort = 3307,
             connectUser = "root",
             connectPassword = "root",
