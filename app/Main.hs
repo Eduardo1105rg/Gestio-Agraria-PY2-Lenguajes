@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-} --Esto es para que los string o char los pase a Query 
-
+{-# LANGUAGE DeriveGeneric #-}
+-- Esto nos ayudo como para los archivos CSV https://forkful.ai/es/haskell/data-formats-and-serialization/working-with-csv/
 
 import Database.MySQL.Simple
     ( close,
@@ -24,6 +25,10 @@ import Data.List (nub)
 import Control.Monad.ST (ST)
 import Data.Time.Calendar (addDays)
 import Data.Function (on)
+import GHC.Generics (Generic) -- Libreria para el csv
+import qualified Data.Csv as Csv -- Libreria para el csv
+import qualified Data.Vector as V -- Libreria para el csv
+import qualified Data.ByteString.Lazy as BL -- Libreria para el csv
 -- Definición de datos de la aplicación
 data Trabajador = Trabajador {
     nombre :: String,
@@ -36,7 +41,22 @@ data Herramienta = Herramienta {
     nombreHA :: String,
     descripcionHA :: String,
     tipoHA :: String
-} deriving (Show, Eq)
+} deriving (Show, Eq, Generic)
+
+
+instance Csv.ToRecord Herramienta
+
+--Usamos un vector por cada fila agarramos el codigo, nombre, descripcion y tipo,
+--Luego este dato lo devolvemos como uno de tipo Herramienta
+instance Csv.FromRecord Herramienta where
+    parseRecord v = do
+        codigo <- v Csv..! 0   
+        nombre <- v Csv..! 1   
+        descripcion <- v Csv..! 2   
+        tipo <- v Csv..! 3   
+        return $ Herramienta codigo nombre descripcion tipo
+
+
 
 data Parcela = Parcela {
     idParcela :: Int, 
@@ -80,7 +100,7 @@ main = do
     putStrLn "Intentando conectar a la base de datos..."
     --Datos para conectarme a la base
     let connectInfo = defaultConnectInfo {
-            connectHost = "172.22.112.1",
+            connectHost = "192.168.50.136",
             connectPort = 3307,
             connectUser = "root",
             connectPassword = "root",
@@ -199,6 +219,7 @@ menuHerramientasOP = do
         putStrLn "Estamos en el apartado de herramientas"
         putStrLn "\n1. Agregar herramientas"
         putStrLn "2. Ver todas las herramientas"
+        putStrLn "3. Volver"
         hFlush stdout
     
     opcionHOP <- liftIO getLine
@@ -209,37 +230,81 @@ menuHerramientasOP = do
             herramientas <- liftIO $ obtenerHerramientas conn
             liftIO $ mapM_ imprimirHerramienta herramientas
             menuHerramientasOP
+        "3" -> do
+            liftIO $ putStrLn "\nVas a volver al menú de opciones operativas"
+            opcionesOperativas
         _ -> do
             liftIO $ putStrLn "Opción invalida"
             menuHerramientasOP
 
+--Le damos una ruta, le pasamos una Herramienta y lo que hacemos es que agregamos al final del csv
+-- lo que hacemos es la herramienta se pasa a bytestring, se separa por comas y se agrega al archivo
+guardarHerramientaCSV :: FilePath -> Herramienta -> IO ()
+guardarHerramientaCSV ruta herramienta = do
+    
+    BL.appendFile ruta (Csv.encode [herramienta])
+
+
+--Usamos un either porque si sale mal queremos un mensaje en cambio si sale bien tendremos un vector con herramientas
+-- Para este caso con la ruta leeemos el archivo linea por linea, de esta forma pasa de binario a un tipo csv o sea
+-- separado por comas algo asi  [Herramienta "H001" "Azadón" "Para remover tierra" "Manual",])
+leerHerramientasCSV :: FilePath -> IO (Either String (V.Vector Herramienta))
+leerHerramientasCSV ruta = do
+    archivo <- BL.readFile ruta  -- Leemos el archivo CSV
+    return $ Csv.decode Csv.HasHeader archivo  
+
 --Esto es para cuando queremos agregar una herramienta, así le pedimos al usuario que la registre en el sistema
 --Luego de esto la pasamos directo a la base de datos para insertarla.
 agregarHerramientas :: App ()
-agregarHerramientas = do 
+agregarHerramientas = do
     liftIO $ do
         putStrLn "Estas agregando herramientas"
+        putStrLn "Por favor primero indique la ruta del archivo .csv que quiere utilizar"
+        putStrLn "Ejemplo data/Herramientas.csv"
+        hFlush stdout
+    ruta <- liftIO getLine
+
+    liftIO $ do
         putStrLn "Ingrese el código de la herramienta ejemplo(HR001)"
         hFlush stdout
     codigoH <- liftIO getLine
-    
+
     liftIO $ do
         putStrLn "Ingrese el nombre de la herramienta"
         hFlush stdout
     nombreH <- liftIO getLine
-    
+
     liftIO $ do
         putStrLn "Ingrese una descripción para la herramienta"
         hFlush stdout
     descripcionH <- liftIO getLine
-    
+
     liftIO $ do
         putStrLn "Ingrese un tipo de herramienta(manual, automatica o motorizada)"
         hFlush stdout
     tipoH <- liftIO getLine
-    
-    liftIO $ putStrLn "Vamos a revisar si es posible agregarla"
-    agregarHerramientasBase codigoH nombreH descripcionH tipoH
+
+    -- Creamos una herramienta
+    let herramienta = Herramienta codigoH nombreH descripcionH tipoH
+
+    -- Guardamos esa herramienta en el csv
+    liftIO $ do
+        putStrLn "Guardando herramienta en el archivo CSV..."
+        guardarHerramientaCSV ruta herramienta
+
+    -- Leemos todas las herramientas si el caso es correcto sino mostramos un mensaje de error
+    -- Con el map recorremos todas las herramientas y se la pasamos a la base por cada herramienta que haya leido
+    herramientas <- liftIO $ leerHerramientasCSV ruta
+    case herramientas of
+        Left errorH -> liftIO $ putStrLn $ "Error al leer el archivo CSV: " ++ errorH
+        Right herramientas -> do
+            -- Insertar cada herramienta en la base de datos
+            mapM_ (\h -> agregarHerramientasBase (codigoHA h) (nombreHA h) (descripcionHA h) (tipoHA h)) herramientas
+            liftIO $ putStrLn "¡Herramientas agregadas exitosamente a la base de datos!"
+    menuHerramientasOP
+
+
+
 
 --Aqui le pasamos el codigo,nombre,descripcion y tipo de la herramienta para que esta se pueda
 --Registrar en la base de datos
@@ -248,7 +313,7 @@ agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
     conn <- ask --Pedimos la conexion y la ejecutamos por medio del execute conn el cual envia
     --ese string como un query a mysql los valores , en este caso tienen signo de pregunta
     --para que la base le asigne el tipo de valor
-    liftIO $ execute conn "INSERT INTO herramientas VALUES (?,?,?,?)" 
+    liftIO $ execute conn "INSERT IGNORE INTO herramientas VALUES (?,?,?,?)" 
                           (codigoH, nombreH, descripcionH, tipoH)
     return ()
 

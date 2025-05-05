@@ -52,6 +52,8 @@ executable ProyePruebaM
                         text >=1.2.3.1,
                         mtl >= 2.2.2,
                         time >= 1.12.2,
+                        cassava >=0.5,
+                        vector,
                         containers >=0.6.5.1
 
     -- Directories containing source files.
