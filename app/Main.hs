@@ -100,7 +100,7 @@ main = do
     putStrLn "Intentando conectar a la base de datos..."
     --Datos para conectarme a la base
     let connectInfo = defaultConnectInfo {
-            connectHost = "192.168.50.136",
+            connectHost = "172.27.133.169",
             connectPort = 3307,
             connectUser = "root",
             connectPassword = "root",
@@ -205,11 +205,51 @@ opcionesOperativas = do
     case opcionOP of
         "1" -> menuHerramientasOP
         "2" -> menuParcela
-        "3" -> liftIO (putStrLn "cccc") >> opcionesOperativas
+        "3" -> menuEstadisticas
         "4" -> return ()   
         _   -> do
             liftIO $ putStrLn "Opción inválida"
             opcionesOperativas 
+menuEstadisticas :: App ()
+menuEstadisticas = do
+    conn <- ask
+    estadistica conn
+    liftIO $ do
+        putStrLn "\n === Apartado de estadisticas ==="
+        putStrLn "Estadistica#1: Parcela con mayor volumen de cosecha"
+        putStrLn "Estadistica#2: Top 3 de parcelas con mayor venta"
+        putStrLn "Estadistica#3: Trabajador con más cosechas realizadas"
+        putStrLn "Estadistica#4: Mes-Año con mayor recolección acumulada"
+        putStrLn "Estadistica#5: Cosechas con subproducción y sobreproducción"
+        putStrLn "#6.Volver"
+        putStrLn "Seleccione una opción por favor"
+        hFlush stdout
+
+    opcionEstadistica <- liftIO getLine
+    
+    case opcionEstadistica of
+        "1" -> do
+            estadistica1 conn
+            menuEstadisticas
+        "2" -> do
+            estadistica2 conn
+            menuEstadisticas
+        "3" -> do
+            estadistica3 conn
+            menuEstadisticas
+        "4" -> do
+            estadistica4 conn
+            menuEstadisticas
+        "5" -> do
+            estadistica5 conn
+            menuEstadisticas
+        "6" -> do
+            liftIO $ putStrLn "Volviendo al menu operativo\n"
+            opcionesOperativas
+        _   -> do
+            liftIO $ putStrLn "Opción inválida\n"
+            menuEstadisticas
+
 
 
 --Este es el apartado para agregar herramientas, ya sea si queremos solo agregar o solo ver, falta darle una opcion de volver
@@ -361,7 +401,7 @@ menuParcela = do
     liftIO $ do
         putStrLn "\n=== Menú de Parcelas ==="
         putStrLn "1. Agregar parcela"
-        putStrLn "2. Ver todas las parcelas"
+        putStrLn "2. Ver parcela especifica"
         putStrLn "3. Volver"
         putStr "Opción: "
         hFlush stdout
@@ -369,10 +409,17 @@ menuParcela = do
     case opcion of
         "1" -> agregarParcelas >> menuParcela --Aqui llamo a agregar parcelas, registro, me devuelvo sin resultado y llamo al menú
         "2" -> do
-            parcelas <- obtenerTodasLasParcelas --Creo el objeto parcelas con la funcion y uso <- para que le de su resultado
+            liftIO $ putStr "Ingrese el ID de la parcela que desea ver: "
+            liftIO $ hFlush stdout
+            idStr <- liftIO getLine
+            let idParc = read idStr :: Int
+            conn <- ask
+            parcela <- construirParcelaCompleta conn idParc
             liftIO $ do
-                putStrLn "\n=== Lista de Parcelas ==="
-                mapM_ imprimirParcela parcelas
+                putStrLn "\n=== Detalles de la Parcela ==="
+                imprimirParcela parcela
+            menuParcela
+
         "3" -> opcionesOperativas --return ()
         _   -> liftIO (putStrLn "Opción inválida") >> menuParcela
 -- Fin de la funcion.
@@ -642,7 +689,78 @@ obtenerTodasLasParcelas = do
     idsResult <- lift $ query_ conn "SELECT idParcela FROM Parcela" :: App [Only Int]
     let ids = map fromOnly idsResult
     mapM (construirParcelaCompleta conn) ids
--- Fin de la funcion.
+
+estadistica :: Connection -> App ()
+estadistica conn = do
+    resultados <- liftIO (query_ conn "SELECT * FROM MuestroEstadisticaIni" :: IO [(Int, Int, String, String, Day, Int, Int)])
+    liftIO $ do
+        putStrLn "\n=== Cosechas registradas ==="
+        mapM_ (\(idCosecha, idParcela, nombreParcela, nombreVege, fechaFin, kilosPlanificados, kilosRecogidos) ->
+            putStrLn $
+                "ID Cosecha: " ++ show idCosecha ++
+                ", Parcela: " ++ nombreParcela ++
+                ", Vegetal: " ++ nombreVege ++
+                ", Fecha: " ++ show fechaFin ++
+                ", Planificado: " ++ show kilosPlanificados ++ " kg" ++
+                ", Recogido: " ++ show kilosRecogidos ++ " kg"
+            ) resultados
+
+
+
+
+
+estadistica1 :: Connection -> App ()
+estadistica1 conn = do
+    resultados <- liftIO (query_ conn "SELECT * FROM ParcelaMayorVolumen" :: IO [(String, Double)])
+    liftIO $ do
+        putStrLn "\n=== Parcela con Mayor Volumen de Cosecha ==="
+        mapM_ (\(nombre, volumen) -> 
+            putStrLn $ "Parcela: " ++ nombre ++ ", Volumen total: " ++ show volumen ++ " kg"
+            ) resultados
+
+estadistica2 :: Connection -> App ()
+estadistica2 conn = do
+    resultados <- liftIO (query_ conn "SELECT * FROM ParcelasMayorVenta" :: IO [(Int, String, Double)])
+    liftIO $ do
+        putStrLn "\n=== Top 3 parcelas con mayores ventas ==="
+        mapM_ (\(idParcelaE, nombreParcela, ventasP) -> 
+            putStrLn $ "ID Parcela: " ++ show idParcelaE ++ ", Nombre de la parcela: " ++ nombreParcela ++ ", Cantidad de ventas: " ++ show ventasP
+            ) resultados
+
+
+
+estadistica3 :: Connection -> App ()
+estadistica3 conn = do
+    resultados <- liftIO (query_ conn "SELECT * FROM TrabajadorMasCosechas" :: IO [(String, Int)])
+    liftIO $ do
+        putStrLn "\n=== Trabajador con más cosechas realizadas ==="
+        mapM_ (\(nombre, cosechas) -> 
+            putStrLn $ "Nombre del trabajador: " ++ nombre ++ ", Cantidad de cosechas: " ++ show cosechas 
+            ) resultados
+
+
+estadistica4 :: Connection -> App ()
+estadistica4 conn = do
+    resultados <- liftIO (query_ conn "SELECT * FROM RecoleccionPorMes" :: IO [(Int, Int, Double)])
+    liftIO $ do
+        putStrLn "\n=== Recolección por mes y año ==="
+        mapM_ (\(mes, anio, recoleccion) -> 
+            putStrLn $ "Mes: " ++ show mes ++ ", Año: " ++ show anio ++ ", Recolección: " ++ show recoleccion ++ " kg"
+            ) resultados
+
+
+estadistica5 :: Connection -> App ()
+estadistica5 conn = do
+    resultados <- liftIO (query_ conn "SELECT * FROM VistaCosechasEstado" :: IO [(Int, Int, Int, Int, String)])
+    liftIO $ do
+        putStrLn "\n=== Cosechas con subproducción y sobreproducción ==="
+        mapM_ (\(idcos, idpf, kilosPlani, kilosReco, estadoReco) -> 
+            putStrLn $ "Id cosecha: " ++ show idcos ++ 
+                       ", Id Parcela: " ++ show idpf ++ 
+                       ", Kilos planificados: " ++ show kilosPlani ++ 
+                       ", Kilos recogidos: " ++ show kilosReco ++ 
+                       ", Estado de recolección: " ++ estadoReco
+            ) resultados
 
 
 
@@ -654,15 +772,16 @@ construirParcelaCompleta conn idParc = do
     let (nombre, zona, area) = parcelaBase
 
     vegetales <- lift $ query conn 
-        "SELECT DISTINCT nombreVege, precio FROM ParcelasFin WHERE idParcela = ?" 
+        "SELECT NombreVegetal, Precio FROM VegetalesPorParcela WHERE IdParcela = ?" 
         (Only idParc) :: App [(String, Float)]
 
     codigosHerramientas <- lift $ query conn 
-        "SELECT DISTINCT codigoHerramienta FROM ParcelasFin WHERE idParcela = ?" 
+        "SELECT CodigoHerramienta FROM HerramientasPorParcela WHERE IdParcela = ?" 
         (Only idParc) :: App [Only String]
 
-    herramientas <- mapM (obtenerHerramienta conn) (nub $ map fromOnly codigosHerramientas)
+    herramientas <- mapM (obtenerHerramienta conn) (map fromOnly codigosHerramientas)
 
+    -- Armar la parcela final
     return Parcela {
         idParcela = idParc,
         nombreP = nombre,
@@ -671,7 +790,7 @@ construirParcelaCompleta conn idParc = do
         vegetalesP = vegetales,
         herramientasP = herramientas
     }
--- Fin de la funcion.
+
 
 
 

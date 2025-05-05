@@ -60,6 +60,122 @@ create table Cosechas (
     constraint fk_CedulaC foreign key (cedula) references Trabajadores(cedula)
 );
 
+use fincaAgricola; 
+CREATE VIEW ParcelaMayorVolumen AS
+SELECT 
+    p.nombre AS nombreParcela,
+    SUM(c.KilosRecogidos) AS Volumen
+FROM 
+    Cosechas c
+JOIN 
+    Parcela p ON c.idParcela = p.idParcela
+GROUP BY 
+    c.idParcela
+ORDER BY 
+    Volumen DESC
+LIMIT 1;
+
+
+-- select * from TrabajadorMasCosechas
+use fincaAgricola;
+CREATE VIEW TrabajadorMasCosechas AS
+SELECT 
+    t.nombreCompleto AS nombreTrabajador,
+    COUNT(*) AS CosechasTrabajadas
+FROM 
+    Cosechas c
+JOIN 
+    Trabajadores t ON c.cedula = t.cedula
+GROUP BY 
+    c.cedula
+ORDER BY 
+    CosechasTrabajadas DESC
+LIMIT 1;
+
+
+
+DROP VIEW IF EXISTS RecoleccionPorMes;
+CREATE VIEW RecoleccionPorMes AS
+SELECT 
+    MONTH(fechafin) AS mes,
+    YEAR(fechafin) AS anio,
+    SUM(KilosRecogidos) AS Recoleccion
+FROM 
+    Cosechas
+GROUP BY 
+    YEAR(fechafin),
+    MONTH(fechafin)
+ORDER BY 
+    anio DESC, mes DESC;
+SELECT * FROM RecoleccionPorMes;
+
+-- drop VIEW ParcelasMayorVenta 
+USE fincaAgricola;
+
+CREATE VIEW ParcelasMayorVenta AS
+SELECT 
+    c.idParcela,
+    p.nombre,
+    SUM(c.KilosRecogidos * vpp.Precio) AS ventaTotal
+FROM 
+    Cosechas c
+JOIN 
+    VegetalesPorParcela vpp ON c.idParcela = vpp.idParcela 
+        AND c.nombreVege = vpp.NombreVegetal
+JOIN 
+    Parcela p ON c.idParcela = p.idParcela
+WHERE 
+    c.estadoCosecha = 'Cerrado'
+GROUP BY 
+    c.idParcela
+ORDER BY 
+    ventaTotal DESC
+LIMIT 3;
+
+-- select * from ParcelasMayorVenta
+
+
+use fincaAgricola;
+CREATE VIEW VistaCosechasEstado AS
+SELECT 
+    idCosecha, 
+    idParcela,
+    KilosPlanificados,
+    KilosRecogidos,
+    CASE
+        WHEN KilosRecogidos < KilosPlanificados THEN 'Subproducción'
+        WHEN KilosRecogidos > KilosPlanificados THEN 'Sobreproducción'
+        ELSE 'Producción correcta'
+    END AS EstadoCosecha
+FROM 
+    Cosechas;
+
+-- SELECT * FROM VistaCosechasEstado;
+
+
+
+USE fincaAgricola;
+CREATE VIEW MuestroEstadisticaIni AS 
+SELECT
+    c.idCosecha,
+    c.idParcela,
+    p.nombre AS nombreParcela,
+    vpp.NombreVegetal,
+    c.fechaFin,
+    c.kilosPlanificados,
+    c.kilosRecogidos
+FROM 
+    Cosechas c
+JOIN
+    Parcela p ON c.idParcela = p.idParcela
+JOIN
+    VegetalesPorParcela vpp 
+    ON c.idParcela = vpp.idParcela 
+    AND c.nombreVege = vpp.NombreVegetal;
+-- select * from MuestroEstadisticaIni
+
+
+
 
 
 -- delimiter $$
@@ -173,3 +289,4 @@ create table Cosechas (
     
 -- end $$
 -- DELIMITER ; 
+
