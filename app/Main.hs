@@ -210,6 +210,8 @@ opcionesOperativas = do
         _   -> do
             liftIO $ putStrLn "Opción inválida"
             opcionesOperativas 
+
+            
 menuEstadisticas :: App ()
 menuEstadisticas = do
     conn <- ask
