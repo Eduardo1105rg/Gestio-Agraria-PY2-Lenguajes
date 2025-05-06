@@ -29,6 +29,8 @@ import GHC.Generics (Generic) -- Libreria para el csv
 import qualified Data.Csv as Csv -- Libreria para el csv
 import qualified Data.Vector as V -- Libreria para el csv
 import qualified Data.ByteString.Lazy as BL -- Libreria para el csv
+import Text.Read (readMaybe)
+import Control.Monad (when)
 -- Definición de datos de la aplicación
 data Trabajador = Trabajador {
     nombre :: String,
@@ -306,25 +308,21 @@ agregarHerramientas = do
         hFlush stdout
     ruta <- liftIO getLine
 
-    liftIO $ do
-        putStrLn "Ingrese el código de la herramienta ejemplo(HR001)"
+    codigoH <- liftIO $ do
         hFlush stdout
-    codigoH <- liftIO getLine
+        leerEntradaTexto "Ingrese el código de la herramienta ejemplo(HR001)"
 
-    liftIO $ do
-        putStrLn "Ingrese el nombre de la herramienta"
+    nombreH <- liftIO $ do
         hFlush stdout
-    nombreH <- liftIO getLine
+        leerEntradaTexto "Ingrese el nombre de la herramienta"
 
-    liftIO $ do
-        putStrLn "Ingrese una descripción para la herramienta"
+    descripcionH <- liftIO $ do
         hFlush stdout
-    descripcionH <- liftIO getLine
+        leerEntradaTexto "Ingrese una descripción para la herramienta"
 
-    liftIO $ do
-        putStrLn "Ingrese un tipo de herramienta(manual, automatica o motorizada)"
+    tipoH <- liftIO $ do
         hFlush stdout
-    tipoH <- liftIO getLine
+        leerEntradaTexto "Ingrese un tipo de herramienta(manual, automatica o motorizada)"
 
     -- Creamos una herramienta
     let herramienta = Herramienta codigoH nombreH descripcionH tipoH
@@ -436,21 +434,17 @@ agregarParcelas :: App ()
 agregarParcelas = do 
     liftIO $ putStrLn "\nEstas agregando una nueva parcela"
 
-    -- liftIO $ putStr "Ingrese el nombre de la parcela: "
-    -- liftIO $ hFlush stdout
+
     nombrePAR <- liftIO $ leerEntradaTexto "Ingrese el nombre de la parcela: "
 
-    -- liftIO $ putStr "Ingrese la zona de la parcela: "
-    -- liftIO $ hFlush stdout
+
     zonaPAR <- liftIO $ leerEntradaTexto "Ingrese el la zona de la parcela: "
 
-    -- liftIO $ putStr "Ingrese el área en metros cuadrados: "
-    -- liftIO $ hFlush stdout
+    
     areaPAR <- liftIO $ leerEntradaNumero "Ingrese el area en metros cuadrados: "
-    -- let areaPAR = read areaStr :: Float
+
 
     conn <- ask
-    -- Esta parte es para mostrar la herramientas disponibles.
     herramientasDisponibles <- liftIO $ obtenerHerramientas conn
     liftIO $ do
         putStrLn "\n=== Herramientas disponibles ==="
@@ -465,7 +459,7 @@ agregarParcelas = do
     -- Esta parte de aqui registra los datos generales de la parcela.
     idParcela <- crearParcelaDB nombrePAR zonaPAR areaPAR
     
-    -- Esta parte, guarda los datos de la verduras y herraminestas asociada a esta parcela.
+    -- Esta parte, guarda los datos de la verduras y herramientas asociadas a esta parcela.
     _ <- liftIO $ crearParcelaExtraDB conn vegetales herramientasSeleccionadas idParcela
 
     -- Muestra los datos de la parcela recien creada.
@@ -590,6 +584,9 @@ extraParcelasHerramientas acumuladas = do
             extraParcelasHerramientas acumuladas
 -- Fin de la funcion.
 
+verificaNombreVegetal :: String -> [(String, Float)] -> Bool
+verificaNombreVegetal nombre acumulados = any (\(n, _) -> n == nombre) acumulados
+
 
 extraParcelas :: [(String, Float)] -> App [(String, Float)]
 extraParcelas acumulados = do
@@ -601,16 +598,17 @@ extraParcelas acumulados = do
     opcion <- liftIO getLine
     case opcion of
         "1" -> do
-            liftIO $ putStr "Nombre del vegetal: "
-            liftIO $ hFlush stdout
-            nombre <- liftIO getLine
-
-            liftIO $ putStr "Precio por kilo: "
-            liftIO $ hFlush stdout
-            precioStr <- liftIO getLine
-            let precio = read precioStr :: Float
-
-            extraParcelas ((nombre, precio):acumulados)
+            nombre <- liftIO $ do
+                hFlush stdout
+                leerEntradaTexto "Nombre del vegetal: "
+            
+            if verificaNombreVegetal nombre acumulados 
+                then do
+                    liftIO $ putStrLn "Error: Este vegetal ya existe. Por favor ingrese un nombre diferente."
+                    extraParcelas acumulados
+                else do
+                    precio <- liftIO $ leerEntradaNumeroFloat "Precio por kilo (ej: 12.50): "
+                    extraParcelas ((nombre, precio):acumulados)
 
         "2" -> return (reverse acumulados)
         _   -> do
@@ -1003,7 +1001,22 @@ leerEntradaNumero mensaje = do
             putStrLn "\nEntrada invalida. Debe ser un numero mayor a 0. Intentelo de nuevo."
             leerEntradaNumero mensaje
 -- Fin de la funcion.
-
+leerEntradaNumeroFloat :: String -> IO Float
+leerEntradaNumeroFloat mensaje = do
+    putStrLn mensaje
+    hFlush stdout
+    entrada <- getLine
+    
+    -- Aqui revisamos si tiene el punto
+    if '.' `elem` entrada
+        then case readMaybe entrada of
+            Just num | num >= 0 -> return num
+            _ -> mostrarError
+        else mostrarError
+  where
+    mostrarError = do
+        putStrLn "\nEntrada inválida. Debe ser un número flotante positivo (ej: 12.5). Intente de nuevo."
+        leerEntradaNumeroFloat mensaje
 
 -- Validar la posibilidad de optener una cosecha por su id, -1: No se encontro la cosecha, -2: No esta en estado Abierto, 1: Se puede optener la cosecha por su ID.
 validarPosibilidadOptenerCosechaPorID :: Connection -> Int -> IO Int
