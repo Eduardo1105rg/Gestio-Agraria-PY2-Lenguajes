@@ -436,6 +436,8 @@ mostrarTodasLasHerramientas = do
 -- Este el menu para poder ir agregando parcelas ya después de haber ingresado la cédula
 menuParcela :: App ()
 menuParcela = do
+    conn <- ask
+
     liftIO $ do
         putStrLn "\n=== Menú de Parcelas ==="
         putStrLn "1. Agregar parcela"
@@ -444,10 +446,18 @@ menuParcela = do
         putStr "Opcion: "
         hFlush stdout
     opcion <- liftIO getLine
+    cantHerramientas <- liftIO $ obtenerCantidadHerramientas conn  -- Validamos cantidad de herramientas
+    
     case opcion of
-        "1" -> agregarParcelas >> menuParcela --Aqui llamo a agregar parcelas, registro, me devuelvo sin resultado y llamo al menú
+        "1" -> do 
+            if cantHerramientas == 0
+                then do
+                    liftIO $ putStrLn "\nError: No hay herramientas registradas en el sistema. No es posible agregar parcelas.\n"
+                    menuParcela
+                else agregarParcelas >> menuParcela
+        
+        
         "2" -> do
-            conn <- ask
 
             idParc <- liftIO $ leerEntradaNumero "Ingrese el ID de la parcela que desea ver: "
 
@@ -677,6 +687,18 @@ registrarHerramientasParcela conn p_codigo_herramienta  idParcela_herramienta = 
         "INSERT INTO HerramientasPorParcela (IdParcela, CodigoHerramienta) VALUES (?,?)"
         (idParcela_herramienta, p_codigo_herramienta)
     return ()
+-- Fin de la funcion.
+
+
+-- Funcion para optener la cantidad de herramientas registradas en la base de datos.
+obtenerCantidadHerramientas :: Connection -> IO Int
+obtenerCantidadHerramientas conn = do
+    resultado <- query_ conn "SELECT COUNT(*) FROM Herramientas" :: IO [Only Int]
+    case resultado of
+        [Only cantidad] -> return cantidad
+        _ -> return 0  
+-- Fin de la funcion.
+
 
 -- Funcion para optener los datos de los trabajadores desde la base de datos.
 obtenerTrabajadores :: Connection -> IO [Trabajador]
@@ -865,7 +887,7 @@ mostrarParcela p = do
 -- Funcion para el registro de cosecha, esta tiene la funcionalida de actual como funcion principal en la cual se solicitaran los datos que se requieren para una cosecha y se validaran.
 subMenuCosecha :: App ()
 subMenuCosecha = do
-    liftIO $ putStrLn ">> Apartado para el registro de cosechas."
+    liftIO $ putStrLn "\n>> Apartado para el registro de cosechas."
 
     -- Cedula del trabajador
     cedula <- liftIO $ leerEntradaTexto "Ingrese el identificador del trabajador (cedula): "
@@ -910,8 +932,8 @@ subMenuCosecha = do
 
             opcionesGenerales
         else do
-            liftIO $ putStrLn "Error: No se pudo registrar la cosecha debido a una validación fallida."
-            subMenuCosecha
+            liftIO $ putStrLn "\nError: No se pudo registrar la cosecha debido a una validacion fallida."
+            opcionesGenerales
 
     -- Volver al menu de la opciones generales.
     opcionesGenerales
@@ -989,12 +1011,31 @@ fechasValidas _ _ = False
 validarDatosCosechaEnRegistro :: Connection -> String -> Int -> Maybe Day -> Maybe Day -> String -> IO Bool
 validarDatosCosechaEnRegistro conn cedula idParcela fechaInicio fechaFin vegetal = do
     trabajadorValido <- trabajadorExiste conn cedula
+    if not trabajadorValido 
+        then liftIO $ putStrLn "\nError: La cedula ingresada no corresponde a ningun trabajador registrado." 
+        else return ()
+
     parcelaValida <- parcelaExiste conn idParcela
+    if not parcelaValida
+        then liftIO $ putStrLn "\nError: La parcela con el ID ingresado no existe en el sistema."
+        else return ()
+
     let fechasOk = fechasValidas fechaInicio fechaFin
+    if not fechasOk
+        then liftIO $ putStrLn "\nError: Hay un error con el formato de las fechas."
+        else return ()
+
     parcelaDisponibleValida <- case (fechaInicio, fechaFin) of
         (Just fi, Just ff) -> parcelaDisponible conn idParcela fi ff
         _ -> return False
+    if not parcelaDisponibleValida
+        then liftIO $ putStrLn "\nError: La parcela seleccionada ya esta ocupada en el rango de fechas indicado o hay un error con las fehcas ingresadas."
+        else return ()
+
     vegetalValido <- vegetalPerteneceAParcela conn idParcela vegetal
+    if not vegetalValido
+        then liftIO $ putStrLn "\nError: El vegetal ingresado no pertenece a la parcela seleccionada."
+        else return ()
 
     return $ trabajadorValido && parcelaValida && fechasOk && parcelaDisponibleValida && vegetalValido
 -- Fin de la funcion.
