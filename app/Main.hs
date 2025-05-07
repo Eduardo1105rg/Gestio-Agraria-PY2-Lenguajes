@@ -105,7 +105,7 @@ main = do
     putStrLn "Intentando conectar a la base de datos..."
     --Datos para conectarme a la base
     let connectInfo = defaultConnectInfo {
-            connectHost = "192.168.50.136",
+            connectHost = "172.22.112.1",
             connectPort = 3307,
             connectUser = "root",
             connectPassword = "root",
@@ -1463,27 +1463,38 @@ auxModificarCantidaCosecha conn p_cantidad_anterior = do
 -- Funcion para hacer de forma separada todas las validaciones de los datos de la cosecha que se va a registrar. (En esta podrias imprimir mesanjes de personalizados por cada false que se tenga.)
 validarDatosCosechaEnModificacion :: Connection -> String -> Int -> Int -> Day -> Day -> String -> Int -> IO Bool
 validarDatosCosechaEnModificacion conn cedula idParcelaAnterior idParcelaNueva fechaInicio fechaFin vegetal p_codigo_cosecha = do
-    liftIO $ putStrLn "Datos que llegaron."
-
-    print (idParcelaAnterior, idParcelaNueva)
-    
     trabajadorValido <- trabajadorExiste conn cedula
-    print trabajadorValido
+    if not trabajadorValido
+        then liftIO $ putStrLn "\nError: La cédula ingresada no corresponde a ningún trabajador registrado."
+        else return ()
+
 
     parcelaValida <- parcelaExiste conn idParcelaNueva
-    print parcelaValida
+    if not parcelaValida
+        then liftIO $ putStrLn "\nError: La parcela con el ID ingresado no existe en el sistema."
+        else return ()
 
-    let fechasOk = fechasValidas (Just fechaInicio) (Just fechaFin)  
+
+    let fechasOk = fechasValidas (Just fechaInicio) (Just fechaFin)
+    if not fechasOk
+        then liftIO $ putStrLn "\nError: La fecha de inicio debe ser anterior a la fecha de finalización."
+        else return ()
+
+
     parcelaDisponibleValida <- 
         if idParcelaAnterior == idParcelaNueva
             then parcelaDisponibleExcluyendoActual conn idParcelaNueva p_codigo_cosecha fechaInicio fechaFin
             else parcelaDisponible conn idParcelaNueva fechaInicio fechaFin
-    print fechasOk
-    print parcelaDisponibleValida
+    if not parcelaDisponibleValida
+        then liftIO $ putStrLn "\nError: La parcela seleccionada ya está ocupada en el rango de fechas indicado."
+        else return ()
+    
 
     vegetalValido <- vegetalPerteneceAParcela conn idParcelaNueva vegetal
-    print vegetalValido
-
+    if not vegetalValido
+        then liftIO $ putStrLn "\nError: El vegetal ingresado no pertenece a la parcela seleccionada."
+        else return ()
+    
     return $ trabajadorValido && parcelaValida && fechasOk && parcelaDisponibleValida && vegetalValido
 -- Fin de la funcion.
 
