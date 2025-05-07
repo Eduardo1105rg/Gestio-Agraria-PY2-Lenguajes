@@ -74,6 +74,8 @@ FROM
     Cosechas c
 JOIN 
     Parcela p ON c.idParcela = p.idParcela
+WHERE 
+    c.estadoCosecha = 'Cerrado'
 GROUP BY 
     c.idParcela
 ORDER BY 
@@ -91,6 +93,8 @@ FROM
     Cosechas c
 JOIN 
     Trabajadores t ON c.cedula = t.cedula
+WHERE 
+    c.estadoCosecha = 'Cerrado'
 GROUP BY 
     c.cedula
 ORDER BY 
@@ -107,6 +111,8 @@ SELECT
     SUM(KilosRecogidos) AS Recoleccion
 FROM 
     Cosechas
+WHERE
+    estadoCosecha = 'Cerrado'
 GROUP BY 
     YEAR(fechafin),
     MONTH(fechafin)
@@ -153,7 +159,10 @@ SELECT
         ELSE 'Producción correcta'
     END AS EstadoCosecha
 FROM 
-    Cosechas;
+    Cosechas
+WHERE 
+    estadoCosecha = 'Cerrado';
+
 
 -- SELECT * FROM VistaCosechasEstado;
 
