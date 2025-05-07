@@ -183,6 +183,8 @@ subMenu _ = do
 --Esta parte es el sub menu de opciones generales - falta darle funcionalidad jsjsjs
 opcionesGenerales :: App ()
 opcionesGenerales = do
+    liftIO $ putStrLn "\n ==== Apartado de opciones generales ===="
+
     liftIO $ putStrLn "\n1. Gestion de cosechas"
     liftIO $ putStrLn "2. Cierre de cosechas."
     liftIO $ putStrLn "3. Consultar cosecha por su ID."
@@ -211,6 +213,8 @@ opcionesGenerales = do
 opcionesOperativas :: App ()
 opcionesOperativas = do
     liftIO $ do 
+        putStrLn "\n ==== Apartado de opciones operativas ===="
+
         putStrLn "\n1. Cargar y mostrar herramientas de campo"
         putStrLn "2. Registrar y mostrar parcelas de cultivo"
         putStrLn "3. Informe de cosechas"
@@ -367,7 +371,7 @@ agregarHerramientas = do
     menuHerramientasOP
 -- Fin de la funcion.
 
-
+-- Funcion para el registro de herramientas e la base de de datos
 agregarHerramientasBase :: String -> String -> String -> String -> App ()
 agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
     conn <- ask
@@ -378,6 +382,7 @@ agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
         then  liftIO $ putStrLn $ "\nHerramienta agregada: " ++ nombreH ++ " (" ++ codigoH ++ ")"
     else liftIO $ putStrLn $ "\nLa herramienta " ++ nombreH ++ " (" ++ codigoH ++ ") ya existia y no se agrego"
     return()
+-- Fin de la funcion.
 
 
 
@@ -1021,7 +1026,7 @@ validarDatosCosechaEnRegistro conn cedula idParcela fechaInicio fechaFin vegetal
         (Just fi, Just ff) -> parcelaDisponible conn idParcela fi ff
         _ -> return False
     if not parcelaDisponibleValida
-        then liftIO $ putStrLn "\nError: La parcela seleccionada ya esta ocupada en el rango de fechas indicado o hay un error con las fehcas ingresadas."
+        then liftIO $ putStrLn "\nError: La parcela seleccionada ya esta ocupada en el rango de fechas indicado o hay un error con las fechas ingresadas."
         else return ()
 
     vegetalValido <- vegetalPerteneceAParcela conn idParcela vegetal
@@ -1074,22 +1079,6 @@ leerEntradaNumero mensaje = do
 -- Fin de la funcion.
 
 -- Funcion para crear una entrada de teclado para valores numericos flotantes.
--- leerEntradaNumeroFloat :: String -> IO Float
--- leerEntradaNumeroFloat mensaje = do
---     putStrLn mensaje
---     hFlush stdout
---     entrada <- getLine
-    
---     -- Aqui revisamos si tiene el punto
---     if '.' `elem` entrada
---         then case readMaybe entrada of
---             Just num | num >= 0 -> return num
---             _ -> mostrarError
---         else mostrarError
---   where
---     mostrarError = do
---         putStrLn "\nEntrada inválida. Debe ser un número flotante positivo (ej: 12.5). Intente de nuevo."
---         leerEntradaNumeroFloat mensaje
 leerEntradaNumeroFloat :: String -> IO Float
 leerEntradaNumeroFloat mensaje = do
     putStrLn ""
@@ -1232,8 +1221,8 @@ eliminarCosechaDB conn idCosecha = do
 cancelarCosecha ::  App ()
 cancelarCosecha = do
     conn <- ask  -- Este seria para para inicar la conexcion con la base de datos.
-    liftIO $ putStrLn  ">> Apartado para el cancele una cosecha.\n"
-    idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
+    liftIO $ putStrLn  "\n>> Apartado para la cancelacion de una cosecha.\n"
+    idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cancelar: "
 
     resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
     case resultado of
@@ -1316,7 +1305,7 @@ modificarCosecha = do
                     opcionesGenerales
                 
                 Nothing -> do
-                    liftIO $ putStrLn "Error crítico: No se encontraron datos de la cosecha, aunque la validación fue exitosa."
+                    liftIO $ putStrLn "Error critico: No se encontraron datos de la cosecha, aunque la validacion fue exitosa."
                     opcionesGenerales
 -- Fin de la funcion.
 
@@ -1506,7 +1495,7 @@ parcelaDisponibleExcluyendoActual conn idParcela idCosechaActual fechaInicio fec
         \AND idCosecha != ? \
         \AND ((fechainicio BETWEEN ? AND ?) OR (fechafin BETWEEN ? AND ?))"
         (idParcela, idCosechaActual, fechaInicio, fechaFin, fechaInicio, fechaFin) :: IO [Only Int]
-    print resultado
+    -- print resultado
     return $ case resultado of
         [Only count] -> count == 0
         _            -> False
@@ -1532,7 +1521,7 @@ consultaDisponibilidadParcelas = do
     conn <- ask 
     liftIO $ do
         putStrLn "\n>> == Apartado para la consulta de la disponibilida de parcelas por rango de fechas."
-        putStrLn "1. Ver las parcelas disponibles en un rango de fechas."
+        putStrLn "\n1. Ver las parcelas disponibles en un rango de fechas."
         putStrLn "2. Ver estado de las parcelas por dia en rango de fechas."
         putStrLn "3. Volver"
         putStr "Opcion: "
@@ -1560,7 +1549,7 @@ consultaDisponibilidadParcelas = do
             liftIO $ mostrarEstadoParcelasAgrupadas estados  
             consultaDisponibilidadParcelas
 
-        "3" -> opcionesOperativas 
+        "3" -> opcionesGenerales 
 
         _   -> liftIO (putStrLn "Opción inválida") >> consultaDisponibilidadParcelas
 -- Fin de la funcion.
@@ -1569,7 +1558,7 @@ consultaDisponibilidadParcelas = do
 solicitarFechas :: IO Day
 solicitarFechas = do
     liftIO $ do
-        nuevaFechaFinalizacionSTR <- liftIO $ leerEntradaTexto "Ingrese la nueva fecha de finalizacion (ej: 30/04/2026): "
+        nuevaFechaFinalizacionSTR <- liftIO $ leerEntradaTexto "Ingrese una fecha (ej: 30/04/2026): "
         let formato = "%d/%m/%Y"
         case parseTimeM True defaultTimeLocale formato nuevaFechaFinalizacionSTR :: Maybe Day of
             Just nuevaFecha -> return nuevaFecha
