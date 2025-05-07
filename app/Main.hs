@@ -31,6 +31,7 @@ import qualified Data.Vector as V -- Libreria para el csv
 import qualified Data.ByteString.Lazy as BL -- Libreria para el csv
 import Text.Read (readMaybe)
 import Control.Monad (when)
+import System.Exit (exitSuccess)
 -- Definición de datos de la aplicación
 data Trabajador = Trabajador {
     nombre :: String,
@@ -93,10 +94,11 @@ data Cosecha = Cosecha {
 -- Es algo tipo global
 type App = ReaderT Connection IO
 
+-- Funcion para el incializado de la instacioa APP
 runApp :: Connection -> App a -> IO a
 runApp conn app = runReaderT app conn
 
-
+-- Funcion Main del programa, encargada de inciar el programa e inciar la conexion con la base de datos.
 main :: IO ()
 main = do
     putStrLn "Intentando conectar a la base de datos..."
@@ -126,6 +128,7 @@ main = do
         putStrLn "Cerrando conexión..."
         close conn
         putStrLn "Conexión cerrada."
+-- Fin de la funcion.
 
 --Este es el menu para las opciones, operativas, generales y de salir
 menu :: App ()
@@ -139,6 +142,7 @@ menu = do
     
     option <- liftIO getLine
     subMenu option
+-- Fin de la funcion.
 
 --Este es el submenu para la parte de opciones operativas, donde pedimos la cedula, si es correcta lo pasamos
 --al otro menú sino le denegamos el acceso y lo devolvemos 
@@ -155,16 +159,24 @@ subMenu "1" = do
     if buscaTrabajador cedula trabajadores 
         then opcionesOperativas
         else liftIO (putStrLn "Acceso denegado") >> menu
+-- Fin de la funcion.
 
 subMenu "2" = do
     opcionesGenerales
     menu
+-- Fin de la funcion.
 
-subMenu "3" = liftIO $ putStrLn "Hasta la próxima"
+
+
+subMenu "3" = do
+    liftIO $ putStrLn "Saliendo del programa de Gestion Agricola..."
+    liftIO exitSuccess
+-- Fin de la funcion.
 
 subMenu _ = do
     liftIO $ putStrLn "Opción no válida"
     menu
+-- Fin de la funcion.
 
 --Esta parte es el sub menu de opciones generales - falta darle funcionalidad jsjsjs
 opcionesGenerales :: App ()
@@ -190,6 +202,7 @@ opcionesGenerales = do
         _   -> do
             liftIO $ putStrLn "Opción inválida"
             opcionesGenerales 
+-- Fin de la funcion.
 
 
 --Submenu para cuando se entra a las opciones operativas
@@ -208,12 +221,13 @@ opcionesOperativas = do
         "1" -> menuHerramientasOP
         "2" -> menuParcela
         "3" -> menuEstadisticas
-        "4" -> return ()   
+        "4" -> menu   
         _   -> do
             liftIO $ putStrLn "Opción inválida"
             opcionesOperativas 
+-- Fin de la funcion.
 
-            
+-- Funcion de menu para la funcionalidad de estadisticas.             
 menuEstadisticas :: App ()
 menuEstadisticas = do
     conn <- ask
@@ -253,6 +267,7 @@ menuEstadisticas = do
         _   -> do
             liftIO $ putStrLn "Opción inválida\n"
             menuEstadisticas
+-- Fin de la funcion.
 
 
 
@@ -280,6 +295,7 @@ menuHerramientasOP = do
         _ -> do
             liftIO $ putStrLn "Opción invalida"
             menuHerramientasOP
+-- Fin de la funcion.
 
 --Le damos una ruta, le pasamos una Herramienta y lo que hacemos es que agregamos al final del csv
 -- lo que hacemos es la herramienta se pasa a bytestring, se separa por comas y se agrega al archivo
@@ -287,6 +303,7 @@ guardarHerramientaCSV :: FilePath -> Herramienta -> IO ()
 guardarHerramientaCSV ruta herramienta = do
     
     BL.appendFile ruta (Csv.encode [herramienta])
+-- Fin de la funcion.
 
 
 --Usamos un either porque si sale mal queremos un mensaje en cambio si sale bien tendremos un vector con herramientas
@@ -296,6 +313,7 @@ leerHerramientasCSV :: FilePath -> IO (Either String (V.Vector Herramienta))
 leerHerramientasCSV ruta = do
     archivo <- BL.readFile ruta  -- Leemos el archivo CSV
     return $ Csv.decode Csv.HasHeader archivo  
+-- Fin de la funcion.
 
 --Esto es para cuando queremos agregar una herramienta, así le pedimos al usuario que la registre en el sistema
 --Luego de esto la pasamos directo a la base de datos para insertarla.
@@ -342,6 +360,7 @@ agregarHerramientas = do
             mapM_ (\h -> agregarHerramientasBase (codigoHA h) (nombreHA h) (descripcionHA h) (tipoHA h)) herramientas
             liftIO $ putStrLn "¡Herramientas agregadas exitosamente a la base de datos!"
     menuHerramientasOP
+-- Fin de la funcion.
 
 
 
@@ -356,6 +375,7 @@ agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
     liftIO $ execute conn "INSERT IGNORE INTO herramientas VALUES (?,?,?,?)" 
                           (codigoH, nombreH, descripcionH, tipoH)
     return ()
+-- Fin de la funcion.
 
 -- Lo que hacemos es llamar a la base y en resultados lo que hacemos es registrarlo como un tipo de Herramienta
 -- Entonces creamos el objeto con el map para asi ir fila por fila de la tupla de los resultados, asi es como
@@ -364,6 +384,7 @@ obtenerHerramientas :: Connection -> IO [Herramienta]
 obtenerHerramientas conn = do
     resultados <- query_ conn "SELECT codigo, nombre, descripcion, tipo FROM herramientas"
     return $ map (\(c, n, d, t) -> Herramienta c n d t) resultados --registramos herramientas
+-- Fin de la funcion.
 
 --Se le pasa un objeto herramienta y este lo recorre hasta quedar totalmente vacio, este lo imprime
 -- por codigo, nombre, descripcion y tipo, por eso esta funcion es IO porque solo son elementos de entrada o salida
@@ -373,12 +394,14 @@ imprimirHerramienta h = do
     putStrLn $ "Nombre: " ++ nombreHA h
     putStrLn $ "Descripción: " ++ descripcionHA h
     putStrLn $ "Tipo: " ++ tipoHA h
+-- Fin de la funcion.
 
 
 --Esto es para ir imprimiendo una herramienta con su indice 
 imprimirHerramientaExtra :: Int -> Herramienta -> IO ()
 imprimirHerramientaExtra idx h = do
     putStrLn $ show idx ++ ". " ++ nombreHA h
+-- Fin de la funcion.
 
 
 --Con esta parte lo que hacemos es ir mostrando las herramientas de 1.. hasta la cantidad que hayan o sea
@@ -393,6 +416,7 @@ mostrarTodasLasHerramientas = do
     liftIO $ do
         putStrLn "\n=== Herramientas disponibles ==="
         mapM_ (uncurry imprimirHerramientaExtra) (zip [1..] herramientas)
+-- Fin de la funcion.
 
 
 -- Este el menu para poder ir agregando parcelas ya después de haber ingresado la cédula
@@ -409,18 +433,28 @@ menuParcela = do
     case opcion of
         "1" -> agregarParcelas >> menuParcela --Aqui llamo a agregar parcelas, registro, me devuelvo sin resultado y llamo al menú
         "2" -> do
-            liftIO $ putStr "Ingrese el ID de la parcela que desea ver: "
-            liftIO $ hFlush stdout
-            idStr <- liftIO getLine
-            let idParc = read idStr :: Int
             conn <- ask
-            parcela <- construirParcelaCompleta conn idParc
-            liftIO $ do
-                putStrLn "\n=== Detalles de la Parcela ==="
-                imprimirParcela parcela
-            menuParcela
+
+            idParc <- liftIO $ leerEntradaNumero "Ingrese el ID de la parcela que desea ver: "
+
+            resultado <- liftIO $ validarPosibilidadOptenerParcelaPorID conn idParc
+
+            case resultado of
+                -1 -> do 
+                    liftIO $ putStrLn  "Error: El id de parcela ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
+                    liftIO $ hFlush stdout
+                    menuParcela
+
+                _ -> do
+                    
+                    parcela <- construirParcelaCompleta conn idParc
+                    liftIO $ do
+                        putStrLn "\n=== Detalles de la Parcela ==="
+                        imprimirParcela parcela
+                    menuParcela
 
         "3" -> opcionesOperativas --return ()
+
         _   -> liftIO (putStrLn "Opción inválida") >> menuParcela
 -- Fin de la funcion.
 
@@ -480,58 +514,7 @@ agregarParcelas = do
 
 --Esto se puede ver como un menu o sub menu para que a las parcelas se les pueda agregar herramientas de forma
 -- consecutiva pero mostrandole al usuario las herramientas registradas hasta el momento
--- extraParcelasHerramientas :: [Herramienta] -> App [Herramienta]
--- extraParcelasHerramientas acumuladas = do
---     conn <- ask
---     herramientas <- liftIO $ obtenerHerramientas conn
-
---     liftIO $ do
---         putStrLn "\n¿Desea agregar una herramienta (Debes de agregar al menos 1)?"
---         putStrLn "1. Sí"
---         putStrLn "2. No (continuar)"
---         putStr "Opción: "
---         hFlush stdout
-
---     opcion <- liftIO getLine
---     case opcion of
---         "1" -> do
---             liftIO $ do
---                 putStrLn "\n=== Herramientas disponibles ==="
---                 mapM_ (uncurry imprimirHerramientaExtra) (zip [1..] herramientas)
---                 putStr "Indique el número de la herramienta que desea agregar: "
---                 hFlush stdout
---             seleccionStr <- liftIO getLine
---             let seleccion = read seleccionStr :: Int
-
---             -- Primero revisamos que el número sea válido 
---             if seleccion >= 1 && seleccion <= length herramientas
---                 then do
---                     --Creamos una variable y le damos la selección -1 para que quede bien pero también
---                     -- es importante que esto !! lo que hace es acceder a la lista de objetos de las herramientas
---                     -- en el indice que le di, es como hacer esto en python Lista[1]
-                    
-                    
---                     -- Aqui hay que agregar una  validacion para que no se pueda registrar una herramienta preciamente registrada.
---                     let herramientaSeleccionada = herramientas !! (seleccion - 1)
---                     liftIO $ putStrLn $ "Has seleccionado: " ++ nombreHA herramientaSeleccionada
---                     --Llamamos recursivamente y agregamos la heeramienta al inicio de acumuladas
---                     extraParcelasHerramientas (herramientaSeleccionada : acumuladas)
---                 else do
---                     liftIO $ putStrLn "Número inválido"
---                     extraParcelasHerramientas acumuladas
---         "2" -> -- Para salir hay que validar que la lista de herramientas tengo al menos 1.
---             -- if length acumuladas <= 0
---             --     then do
---             --         liftIO $ putStrLn "Debes de seleccionar al menos una herramienta."
---             --         extraParcelasHerramientas acumuladas
---             -- else do
---                 return (reverse acumuladas)
---         _ -> do
---             liftIO $ putStrLn "Opción inválida"
---             extraParcelasHerramientas acumuladas
-
-
-
+-- Funcion pora agregar las herramientras que estaran asociadas a una parcela, se le va pidiendo poco a poco al usuario que agregue el numero de herramienta que desea agregar.
 extraParcelasHerramientas :: [Herramienta] -> App [Herramienta]
 extraParcelasHerramientas acumuladas = do
     conn <- ask
@@ -555,12 +538,12 @@ extraParcelasHerramientas acumuladas = do
             seleccionStr <- liftIO getLine
             let seleccion = read seleccionStr :: Int
 
-            -- Validamos que la selección sea correcta
+            -- Validamos que la seleccion sea correcta
             if seleccion >= 1 && seleccion <= length herramientas
                 then do
                     let herramientaSeleccionada = herramientas !! (seleccion - 1)
                     
-                    -- Nos aseguramos de que la herramienta no esté ya seleccionada
+                    -- Nos aseguramos de que la herramienta no este ya seleccionada
                     if herramientaSeleccionada `elem` acumuladas
                         then do
                             liftIO $ putStrLn "Error: La herramienta ya fue seleccionada."
@@ -584,10 +567,12 @@ extraParcelasHerramientas acumuladas = do
             extraParcelasHerramientas acumuladas
 -- Fin de la funcion.
 
+-- Verificar que la lista que se reciba como parametro no contenga elementos repetidos.
 verificaNombreVegetal :: String -> [(String, Float)] -> Bool
 verificaNombreVegetal nombre acumulados = any (\(n, _) -> n == nombre) acumulados
+-- Fin de la funcion.
 
-
+-- Funcion para agrear los vegetales y su precio a la parcela que se esta registrando.
 extraParcelas :: [(String, Float)] -> App [(String, Float)]
 extraParcelas acumulados = do
     liftIO $ putStrLn "\n¿Desea agregar un vegetal?"
@@ -618,7 +603,7 @@ extraParcelas acumulados = do
 
 
 
-
+-- Funcion para llamar a la funcion encargada de guardar los datos generales de la parcela en la base de datos.
 crearParcelaDB :: String -> String -> Int -> App Int
 crearParcelaDB nombrePAR zonaPAR areaPAR = do
     conn <- ask
@@ -628,7 +613,7 @@ crearParcelaDB nombrePAR zonaPAR areaPAR = do
     liftIO $ obtenerUltimoID conn
 -- Fin de la funcion.
 
-
+-- Funcion para guardar los datos generales de una parcela en la base de datos del programa.
 insertarParcela :: Connection -> String -> String -> Int -> IO ()
 insertarParcela conn nombre zona area = do
     execute conn 
@@ -646,7 +631,7 @@ obtenerUltimoID conn = do
         _ -> error "No se pudo obtener el ID insertado"
 -- Fin de la funcion.
 
-    
+-- Funcion para llamar por cada elemento de la lista de vegetales y herramientas las respectivas funciones que se encargan de guardar los datos.    
 crearParcelaExtraDB :: Connection -> [(String, Float)] -> [Herramienta] -> Int -> IO ()
 crearParcelaExtraDB conn  vegetalesP herramientasP idParcela = do
  -- Insertar vegetales en la base de datos
@@ -656,13 +641,16 @@ crearParcelaExtraDB conn  vegetalesP herramientasP idParcela = do
     mapM_ (\herramienta -> registrarHerramientasParcela conn (codigoHA herramienta) idParcela) herramientasP
 -- Fin de la funcion.
 
+-- Funcion para guardar los datos de las vegetales que estaran asociados a una parcela en la base de datos.
 registrarVegetalesParcela :: Connection -> String -> Float -> Int -> IO ()
 registrarVegetalesParcela conn nombreVegetal precioVegetal idParcela_vegetal = do
     _ <- execute conn
         "INSERT INTO VegetalesPorParcela (IdParcela, NombreVegetal, Precio) VALUES (?,?,?)"
         (idParcela_vegetal, nombreVegetal, precioVegetal)
     return ()
+-- Fin de la funcion.
 
+--  Funcion para guardar los datos de kas herramientas que estan asociados a una parcela en la base de datos.
 registrarHerramientasParcela :: Connection -> String -> Int -> IO ()
 registrarHerramientasParcela conn p_codigo_herramienta  idParcela_herramienta = do
     _ <- execute conn
@@ -670,26 +658,29 @@ registrarHerramientasParcela conn p_codigo_herramienta  idParcela_herramienta = 
         (idParcela_herramienta, p_codigo_herramienta)
     return ()
 
+-- Funcion para optener los datos de los trabajadores desde la base de datos.
 obtenerTrabajadores :: Connection -> IO [Trabajador]
 obtenerTrabajadores conn = do
     trabajadores <- query_ conn "SELECT nombreCompleto, cedula, rol FROM Trabajadores" 
     return (map (\(n,c,r) -> Trabajador n c r) trabajadores) -- registramos trabajadores en la app
 -- Fin de la funcion.
 
-
+-- Funcion para buscar un trabajador especfico en una lista de trabajadores.
 buscaTrabajador :: String -> [Trabajador] -> Bool
 buscaTrabajador cedulaBuscada = any (\t -> cedulaBuscada == cedula t)
 -- Fin de la funcion.
 
 
-
+-- Funcion para optener todas las parcelas registradas en la base de datos.
 obtenerTodasLasParcelas :: App [Parcela]
 obtenerTodasLasParcelas = do
     conn <- ask
     idsResult <- lift $ query_ conn "SELECT idParcela FROM Parcela" :: App [Only Int]
     let ids = map fromOnly idsResult
     mapM (construirParcelaCompleta conn) ids
+-- Fin de la funcion.
 
+-- Funcion para optener los datos de las cosechas y parcelas registradas en la base de datos.
 estadistica :: Connection -> App ()
 estadistica conn = do
     resultados <- liftIO (query_ conn "SELECT * FROM MuestroEstadisticaIni" :: IO [(Int, Int, String, String, Day, Int, Int)])
@@ -704,11 +695,12 @@ estadistica conn = do
                 ", Planificado: " ++ show kilosPlanificados ++ " kg" ++
                 ", Recogido: " ++ show kilosRecogidos ++ " kg"
             ) resultados
+-- Fin de la funcion.
 
 
 
 
-
+-- Funcion para optener los datos de una estidistica desde la base de datos del programa, y mostrar dichos datos.
 estadistica1 :: Connection -> App ()
 estadistica1 conn = do
     resultados <- liftIO (query_ conn "SELECT * FROM ParcelaMayorVolumen" :: IO [(String, Double)])
@@ -717,7 +709,9 @@ estadistica1 conn = do
         mapM_ (\(nombre, volumen) -> 
             putStrLn $ "Parcela: " ++ nombre ++ ", Volumen total: " ++ show volumen ++ " kg"
             ) resultados
+-- Fin de la funcion.
 
+-- Funcion para optener los datos de una estidistica desde la base de datos del programa, y mostrar dichos datos.
 estadistica2 :: Connection -> App ()
 estadistica2 conn = do
     resultados <- liftIO (query_ conn "SELECT * FROM ParcelasMayorVenta" :: IO [(Int, String, Double)])
@@ -726,9 +720,10 @@ estadistica2 conn = do
         mapM_ (\(idParcelaE, nombreParcela, ventasP) -> 
             putStrLn $ "ID Parcela: " ++ show idParcelaE ++ ", Nombre de la parcela: " ++ nombreParcela ++ ", Cantidad de ventas: " ++ show ventasP
             ) resultados
+-- Fin de la funcion.
 
 
-
+-- Funcion para optener los datos de una estidistica desde la base de datos del programa, y mostrar dichos datos.
 estadistica3 :: Connection -> App ()
 estadistica3 conn = do
     resultados <- liftIO (query_ conn "SELECT * FROM TrabajadorMasCosechas" :: IO [(String, Int)])
@@ -737,8 +732,9 @@ estadistica3 conn = do
         mapM_ (\(nombre, cosechas) -> 
             putStrLn $ "Nombre del trabajador: " ++ nombre ++ ", Cantidad de cosechas: " ++ show cosechas 
             ) resultados
+-- Fin de la funcion.
 
-
+-- Funcion para optener los datos de una estidistica desde la base de datos del programa, y mostrar dichos datos.
 estadistica4 :: Connection -> App ()
 estadistica4 conn = do
     resultados <- liftIO (query_ conn "SELECT * FROM RecoleccionPorMes" :: IO [(Int, Int, Double)])
@@ -747,8 +743,9 @@ estadistica4 conn = do
         mapM_ (\(mes, anio, recoleccion) -> 
             putStrLn $ "Mes: " ++ show mes ++ ", Año: " ++ show anio ++ ", Recolección: " ++ show recoleccion ++ " kg"
             ) resultados
+-- Fin de la funcion.
 
-
+-- Funcion para optener los datos de una estidistica desde la base de datos del programa, y mostrar dichos datos.
 estadistica5 :: Connection -> App ()
 estadistica5 conn = do
     resultados <- liftIO (query_ conn "SELECT * FROM VistaCosechasEstado" :: IO [(Int, Int, Int, Int, String)])
@@ -761,9 +758,10 @@ estadistica5 conn = do
                        ", Kilos recogidos: " ++ show kilosReco ++ 
                        ", Estado de recolección: " ++ estadoReco
             ) resultados
+-- Fin de la funcion.
 
 
-
+-- Funcion para optener los datos de una una parcela de las diferentes tamblas en donde se alamacen la infromacion.
 construirParcelaCompleta :: Connection -> Int -> App Parcela
 construirParcelaCompleta conn idParc = do
     [parcelaBase] <- lift $ query conn 
@@ -790,10 +788,23 @@ construirParcelaCompleta conn idParc = do
         vegetalesP = vegetales,
         herramientasP = herramientas
     }
+-- Fin de la funcion.
+
+-- Funcion para intertar ver si existe una parcela con el id buscado.
+validarPosibilidadOptenerParcelaPorID :: Connection -> Int -> IO Int
+validarPosibilidadOptenerParcelaPorID conn idParcela = do
+    resultado <- query conn
+        "SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM Parcela WHERE idParcela = ?) THEN -1 ELSE 1 END AS Resultado"
+        (Only idParcela) :: IO [Only Int]
+    
+    case resultado of
+        [Only valor] -> return valor
+        _            -> return (-99)  -- En caso de que ocurra algún error inesperado
+-- Fin de la funcion.
 
 
 
-
+-- Funcion para optener los datos de una herramientas especifica desde la base de datos del programa.
 obtenerHerramienta :: Connection -> String -> App Herramienta
 obtenerHerramienta conn codigo = do
     [herramienta] <- lift $ query conn 
@@ -804,7 +815,7 @@ obtenerHerramienta conn codigo = do
     uncurry4 f (a,b,c,d) = f a b c d
 -- Fin de la funcion.
 
-
+-- Funcion para mostrar los datos de una parcela.
 imprimirParcela :: Parcela -> IO ()
 imprimirParcela p = do
     putStrLn $ "\nID: " ++ show (idParcela p)
@@ -817,7 +828,7 @@ imprimirParcela p = do
     mapM_ (\h -> putStrLn $ "  - " ++ nombreHA h) (herramientasP p)
 -- Fin de la funcion.
 
-
+-- Funcion para mostrar los datos de una parcela.
 mostrarParcela :: Parcela -> IO ()
 mostrarParcela p = do
     putStrLn  "\n=== Detalles de Parcela ==="
@@ -831,7 +842,7 @@ mostrarParcela p = do
     mapM_ (\h -> putStrLn $ "  - " ++ nombreHA h ++ " (" ++ codigoHA h ++ ")") (herramientasP p)
 -- Fin de la funcion.
 
-
+-- Funcion para el registro de cosecha, esta tiene la funcionalida de actual como funcion principal en la cual se solicitaran los datos que se requieren para una cosecha y se validaran.
 subMenuCosecha :: App ()
 subMenuCosecha = do
     liftIO $ putStrLn ">> Apartado para el cierre de la cosecha."
@@ -921,7 +932,7 @@ parcelaExiste conn idParcela = do
 -- Fin de la funcion.
 
 
--- Esto seria para verificar si hay otra cosecha en el ranfo de fecha indicado para la parcela.
+-- Esto seria para verificar si hay otra cosecha en el rango de fecha indicado para la parcela.
 parcelaDisponible :: Connection -> Int -> Day -> Day -> IO Bool
 parcelaDisponible conn idParcela fechaInicio fechaFin = do
     resultado <- query conn 
@@ -968,6 +979,7 @@ validarDatosCosechaEnRegistro conn cedula idParcela fechaInicio fechaFin vegetal
     return $ trabajadorValido && parcelaValida && fechasOk && parcelaDisponibleValida && vegetalValido
 -- Fin de la funcion.
 
+-- funcion para optener los datos de todas las cosechas registradas en el sistema desde la base de datos.
 obtenerCosecha :: Connection -> IO [Cosecha]
 obtenerCosecha conn = do
     resultados <- query_ conn "SELECT idCosecha, idParcela, fechainicio, fechafin, cedula, nombrevege, estadoCosecha, KilosPlanificados, KilosRecogidos FROM Cosechas"
@@ -978,9 +990,11 @@ obtenerCosecha conn = do
 -- Funcion para crear una entrada de teclado para texto, se valida que lo que se ingrese no seva vacio..
 leerEntradaTexto :: String -> IO String
 leerEntradaTexto mensaje = do
-    putStrLn mensaje
+    putStr mensaje
     hFlush stdout
     entrada <- getLine
+    putStrLn ""
+    hFlush stdout
     if null entrada
         then do
             putStrLn "\nLa entrada no puede estar vacía. Intentelo de nuevo."
@@ -991,9 +1005,11 @@ leerEntradaTexto mensaje = do
 -- Funcion para crear una entrada de teclado para numeros.
 leerEntradaNumero :: String -> IO Int
 leerEntradaNumero mensaje = do
-    putStrLn mensaje
+    putStr mensaje
     hFlush stdout
     entrada <- getLine
+    putStrLn ""
+    hFlush stdout
     let parsed = reads entrada :: [(Int, String)]
     case parsed of
         [(num, "")] | num >= 0 -> return num
@@ -1001,22 +1017,39 @@ leerEntradaNumero mensaje = do
             putStrLn "\nEntrada invalida. Debe ser un numero mayor a 0. Intentelo de nuevo."
             leerEntradaNumero mensaje
 -- Fin de la funcion.
+
+-- Funcion para crear una entrada de teclado para valores numericos flotantes.
+-- leerEntradaNumeroFloat :: String -> IO Float
+-- leerEntradaNumeroFloat mensaje = do
+--     putStrLn mensaje
+--     hFlush stdout
+--     entrada <- getLine
+    
+--     -- Aqui revisamos si tiene el punto
+--     if '.' `elem` entrada
+--         then case readMaybe entrada of
+--             Just num | num >= 0 -> return num
+--             _ -> mostrarError
+--         else mostrarError
+--   where
+--     mostrarError = do
+--         putStrLn "\nEntrada inválida. Debe ser un número flotante positivo (ej: 12.5). Intente de nuevo."
+--         leerEntradaNumeroFloat mensaje
 leerEntradaNumeroFloat :: String -> IO Float
 leerEntradaNumeroFloat mensaje = do
-    putStrLn mensaje
+    putStr mensaje
+    hFlush stdout
+    putStrLn ""
     hFlush stdout
     entrada <- getLine
-    
-    -- Aqui revisamos si tiene el punto
-    if '.' `elem` entrada
-        then case readMaybe entrada of
-            Just num | num >= 0 -> return num
-            _ -> mostrarError
-        else mostrarError
-  where
-    mostrarError = do
-        putStrLn "\nEntrada inválida. Debe ser un número flotante positivo (ej: 12.5). Intente de nuevo."
-        leerEntradaNumeroFloat mensaje
+
+    let parsed = reads entrada :: [(Float, String)]
+    case parsed of
+        [(num, "")] | num >= 0 -> return num
+        _ -> do
+            putStrLn "\nEntrada invalida. Debe ser un numero flotante mayor a 0 (ej: 12.5). Intente de nuevo."
+            leerEntradaNumeroFloat mensaje
+-- Fin de la funcion.
 
 -- Validar la posibilidad de optener una cosecha por su id, -1: No se encontro la cosecha, -2: No esta en estado Abierto, 1: Se puede optener la cosecha por su ID.
 validarPosibilidadOptenerCosechaPorID :: Connection -> Int -> IO Int
@@ -1068,9 +1101,6 @@ cerrarCosecha = do
     idCosechaIngreado <- liftIO $ leerEntradaNumero "Ingresa el id de la cosecha que desea cerrar: "
 
     resultado <- liftIO $ validarPosibilidadOptenerCosechaPorID conn idCosechaIngreado
-    -- liftIO $ print resultado
-    -- liftIO $ hFlush stdout
-    -- _ <- liftIO $ (query_ conn "SELECT 1" :: IO [Only Int]) 
     
     case resultado of
         -1 -> do 
@@ -1086,15 +1116,14 @@ cerrarCosecha = do
             liftIO $ hFlush stdout
             kilosRecogidos_Input <- liftIO $ leerEntradaNumero "Ingresa la cantidad de kilogramos recogidos en esta cosecha: "
             _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Cerrado" kilosRecogidos_Input
-            -- _ <- liftIO $ actualizarEstadoCosecha conn idCosechaIngreado "Abierta" kilosRecogidos_Input
 
-            -- liftIO $ hFlush stdout
-            -- _ <- liftIO $ (query_ conn "SELECT 1" :: IO [Only Int])
             liftIO $ putStrLn "La cosecha se ha cerrado correctamente. \n"
             liftIO $ hFlush stdout
+
             opcionesGenerales
 -- Fin de la funcion.
 
+-- Funcion para mostrar los datos de una cosecha.
 mostrarDatosCosecha :: Cosecha -> IO ()
 mostrarDatosCosecha p_datosCosechaMostrar = do
     putStrLn  "\n>> ==== Detalles de la cosecha ===="
@@ -1111,7 +1140,7 @@ mostrarDatosCosecha p_datosCosechaMostrar = do
     hFlush stdout
 -- Fin de la funcion.
 
-
+-- funcion para consultal los datos de una cosecha mediante su id.
 consultarCosechaPorID :: App ()
 consultarCosechaPorID = do
     conn <- ask -- Este seria para para inicar la conexcion con la base de datos.
@@ -1256,7 +1285,7 @@ auxModificarCedulaCosecha conn cedula_anterior = do
             auxModificarCedulaCosecha conn cedula_anterior
 -- Fin de la funcion.
 
-
+-- funcion auxiliar para la modificacion de la parcela asociada a una cosecha, el usuario decidira se se cambia el valor que ya estade definido o no. 
 auxModificarParcelaCosecha :: Connection -> Int -> IO Int
 auxModificarParcelaCosecha conn p_idParcela_anterior = do 
     liftIO $ do
@@ -1278,7 +1307,7 @@ auxModificarParcelaCosecha conn p_idParcela_anterior = do
 -- Fin de la funcion.
 
 
-
+-- funcion auxiliar para la modificacion de la fecha de inicio de una cosecha, el usuario decidira se se cambia el valor que ya estade definido o no. 
 auxModificarFechaInicioCosecha :: Connection -> Day -> IO Day
 auxModificarFechaInicioCosecha conn p_fechaInicio_anterior = do 
     liftIO $ do
@@ -1305,7 +1334,7 @@ auxModificarFechaInicioCosecha conn p_fechaInicio_anterior = do
             auxModificarFechaInicioCosecha conn p_fechaInicio_anterior
 -- Fin de la funcion.
 
-
+-- funcion auxiliar para la modificacion de la fecha de finalizacion de una cosecha, el usuario decidira se se cambia el valor que ya estade definido o no. 
 auxModificarFechaFinalizacionCosecha :: Connection -> Day -> IO Day
 auxModificarFechaFinalizacionCosecha conn p_fechaFinalizacion_anterior = do 
     liftIO $ do
@@ -1332,7 +1361,7 @@ auxModificarFechaFinalizacionCosecha conn p_fechaFinalizacion_anterior = do
             auxModificarFechaFinalizacionCosecha conn p_fechaFinalizacion_anterior
 -- Fin de la funcion.
 
-
+-- funcion auxiliar para la modificacion del vegetal que se recolectara en una cosecha, el usuario decidira se se cambia el valor que ya estade definido o no. 
 auxModificarVegetalCosecha :: Connection -> String -> IO String
 auxModificarVegetalCosecha conn p_vegetal_anterior = do 
     liftIO $ do
@@ -1350,9 +1379,9 @@ auxModificarVegetalCosecha conn p_vegetal_anterior = do
         _   -> do
             liftIO $ putStrLn "Opcion invalida. Intentelo de nuevo."
             auxModificarVegetalCosecha conn p_vegetal_anterior
-
 -- Fin de la funcion.
 
+-- funcion auxiliar para la modificacion de la cantidad del vegetal que se planea recolectar en una cosecha, el usuario decidira se se cambia el valor que ya estade definido o no. 
 auxModificarCantidaCosecha :: Connection -> Int -> IO Int
 auxModificarCantidaCosecha conn p_cantidad_anterior = do 
     liftIO $ do
@@ -1402,6 +1431,7 @@ validarDatosCosechaEnModificacion conn cedula idParcelaAnterior idParcelaNueva f
     return $ trabajadorValido && parcelaValida && fechasOk && parcelaDisponibleValida && vegetalValido
 -- Fin de la funcion.
 
+-- Funcion para validar la disponibilidad de las parcelas, ezcluyendo la pardela cuyo id se indique, esto es una consulta  a la base de datos.
 parcelaDisponibleExcluyendoActual :: Connection -> Int -> Int -> Day -> Day -> IO Bool
 parcelaDisponibleExcluyendoActual conn idParcela idCosechaActual fechaInicio fechaFin = do
     resultado <- query conn 
