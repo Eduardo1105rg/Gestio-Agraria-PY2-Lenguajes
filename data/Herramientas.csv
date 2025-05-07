@@ -5,4 +5,8 @@ HR004,Rastrillo,Sirve para recoger,manual
 HR004,Rastrillo,recoge,manual
 HR004,Rastrillo,recoge,manual
 HR004,Rastrillo,recoge,manual
+HR005,Tractor,Cosecha y arado,Motorizada
+HR006,Motosierra,Corte de árboles y madera,Motorizada
+HR007,Pala,Excavación y movimiento de tierra,manual
+HR008,Cultivador,Remueve tierra,Motorizada
 ,,,

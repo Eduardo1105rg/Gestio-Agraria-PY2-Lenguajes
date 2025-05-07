@@ -29,6 +29,7 @@ import GHC.Generics (Generic) -- Libreria para el csv
 import qualified Data.Csv as Csv -- Libreria para el csv
 import qualified Data.Vector as V -- Libreria para el csv
 import qualified Data.ByteString.Lazy as BL -- Libreria para el csv
+import System.Directory (doesFileExist) -- Modulo para ver si podemos abrir el archivo.
 import Text.Read (readMaybe)
 import Control.Monad (when)
 import System.Exit (exitSuccess)
@@ -134,11 +135,12 @@ main = do
 menu :: App ()
 menu = do
     liftIO $ do
+        putStrLn "\n ==== Bienvenido al menu principal del Sistema de Gestion Agararia ===="
         putStrLn "1. Opciones operativas"
         putStrLn "2. Opciones generales"
         putStrLn "3. Salir"
         putStr "Opción: "
-        hFlush stdout --Esto es para que la consola muestre el mensaje desde antes
+        hFlush stdout --Esto es para que la consola muestre el mensaje desde antes (Consume lo que queda del buffer)
     
     option <- liftIO getLine
     subMenu option
@@ -169,12 +171,12 @@ subMenu "2" = do
 
 
 subMenu "3" = do
-    liftIO $ putStrLn "Saliendo del programa de Gestion Agricola..."
+    liftIO $ putStrLn "\n>> Saliendo del programa de Gestion Agricola..."
     liftIO exitSuccess
 -- Fin de la funcion.
 
 subMenu _ = do
-    liftIO $ putStrLn "Opción no válida"
+    liftIO $ putStrLn "Opcion no valida. \n = Intelo nuevamente."
     menu
 -- Fin de la funcion.
 
@@ -234,17 +236,18 @@ menuEstadisticas = do
     estadistica conn
     liftIO $ do
         putStrLn "\n === Apartado de estadisticas ==="
-        putStrLn "Estadistica#1: Parcela con mayor volumen de cosecha"
-        putStrLn "Estadistica#2: Top 3 de parcelas con mayor venta"
-        putStrLn "Estadistica#3: Trabajador con más cosechas realizadas"
-        putStrLn "Estadistica#4: Mes-Año con mayor recolección acumulada"
-        putStrLn "Estadistica#5: Cosechas con subproducción y sobreproducción"
-        putStrLn "#6.Volver"
-        putStrLn "Seleccione una opción por favor"
+        putStrLn "1) Parcela con mayor volumen de cosecha"
+        putStrLn "2) Top 3 de parcelas con mayor venta"
+        putStrLn "3) Trabajador con más cosechas realizadas"
+        putStrLn "4) Mes-Año con mayor recolección acumulada"
+        putStrLn "5) Cosechas con subproducción y sobreproducción"
+        putStrLn "6) Volver"
+        putStr "Seleccione una de las opciones anteriores:"
         hFlush stdout
 
     opcionEstadistica <- liftIO getLine
-    
+    liftIO $ putStrLn ""
+    liftIO $ hFlush stdout
     case opcionEstadistica of
         "1" -> do
             estadistica1 conn
@@ -275,19 +278,23 @@ menuEstadisticas = do
 menuHerramientasOP :: App ()
 menuHerramientasOP = do
     liftIO $ do
-        putStrLn "Estamos en el apartado de herramientas"
+        putStrLn "\nEstamos en el apartado de herramientas"
         putStrLn "\n1. Agregar herramientas"
         putStrLn "2. Ver todas las herramientas"
         putStrLn "3. Volver"
+        putStrLn "\nSelecciona una de las opciones anteriores: "
         hFlush stdout
-    
+        
     opcionHOP <- liftIO getLine
     case opcionHOP of
         "1" -> agregarHerramientas
         "2" -> do
+            liftIO $ putStrLn "\n> === Viendo las herramientas registradas en el sistema. === <"
             conn <- ask
             herramientas <- liftIO $ obtenerHerramientas conn
             liftIO $ mapM_ imprimirHerramienta herramientas
+            liftIO $ putStrLn "\n> === Se han mostrado todas las herraminetas registradas en el sistema. === <"
+
             menuHerramientasOP
         "3" -> do
             liftIO $ putStrLn "\nVas a volver al menú de opciones operativas"
@@ -311,8 +318,12 @@ guardarHerramientaCSV ruta herramienta = do
 -- separado por comas algo asi  [Herramienta "H001" "Azadón" "Para remover tierra" "Manual",])
 leerHerramientasCSV :: FilePath -> IO (Either String (V.Vector Herramienta))
 leerHerramientasCSV ruta = do
-    archivo <- BL.readFile ruta  -- Leemos el archivo CSV
-    return $ Csv.decode Csv.HasHeader archivo  
+    existe <- doesFileExist ruta  -- Verificamos si el archivo existe
+    if existe
+        then do
+            archivo <- BL.readFile ruta  -- Solo leemos si el archivo existe
+            return $ Csv.decode Csv.HasHeader archivo  
+        else return $ Left "Error: El archivo no existe en la ruta especificada."
 -- Fin de la funcion.
 
 --Esto es para cuando queremos agregar una herramienta, así le pedimos al usuario que la registre en el sistema
@@ -320,7 +331,7 @@ leerHerramientasCSV ruta = do
 agregarHerramientas :: App ()
 agregarHerramientas = do
     liftIO $ do
-        putStrLn "Estas agregando herramientas desde un archivo CSV"
+        putStrLn "\nEstas agregando herramientas desde un archivo CSV"
         putStrLn "Por favor indique la ruta del archivo .csv que quiere utilizar"
         putStrLn "Ejemplo: data/Herramientas.csv"
         hFlush stdout
@@ -329,11 +340,24 @@ agregarHerramientas = do
     -- Leemos todas las herramientas del CSV
     herramientas <- liftIO $ leerHerramientasCSV ruta
     case herramientas of
-        Left errorH -> liftIO $ putStrLn $ "Error al leer el archivo CSV: " ++ errorH
+        Left errorH -> liftIO $ putStrLn $ "\nError al leer el archivo CSV: " ++ errorH
         Right herramientas -> do
+
+            -- Antes de insetar las herramientas nuevas, vamos a mostrar las que ya estaban registradas.
+            liftIO $ putStrLn "\n> === Viendo las herramientas registradas en el sistema. === <"
+            conn <- ask
+            herramientas <- liftIO $ obtenerHerramientas conn
+            liftIO $ mapM_ imprimirHerramienta herramientas
+            liftIO $ putStrLn "\n> === Se han mostrado todas las herraminetas registradas en el sistema. === <\n"
+
             -- Insertar cada herramienta en la base de datos
             mapM_ (\h -> agregarHerramientasBase (codigoHA h) (nombreHA h) (descripcionHA h) (tipoHA h)) herramientas
-            liftIO $ putStrLn $ "¡Se agregaron las herramientas correspondientes!"
+            liftIO $ putStrLn "\n¡Se agregaron las herramientas correspondientes!"
+
+            -- En esta parte se tendria que mostrar las herramientas que recien se agregaron al sistema.
+
+
+
     menuHerramientasOP
 -- Fin de la funcion.
 
@@ -402,7 +426,7 @@ menuParcela = do
         putStrLn "1. Agregar parcela"
         putStrLn "2. Ver parcela especifica"
         putStrLn "3. Volver"
-        putStr "Opción: "
+        putStr "Opcion: "
         hFlush stdout
     opcion <- liftIO getLine
     case opcion of
@@ -416,7 +440,7 @@ menuParcela = do
 
             case resultado of
                 -1 -> do 
-                    liftIO $ putStrLn  "Error: El id de parcela ingresado no coincide con ninguna cosecha registrada en el sistema.\n"
+                    liftIO $ putStrLn  "Error: El id de parcela ingresado no coincide con ninguna parcela registrada en el sistema.\n"
                     liftIO $ hFlush stdout
                     menuParcela
 
@@ -461,10 +485,10 @@ agregarParcelas = do
 
     -- Esta optiene la lista de herramientas que el usuario añadira a esta parcela.
     herramientasSeleccionadas <- extraParcelasHerramientas []
-    liftIO $ print herramientasSeleccionadas
+    -- liftIO $ print herramientasSeleccionadas
     -- Esta parte es para registrar los vegetales que perteneceran a esta parcela.
     vegetales <- extraParcelas []
-    liftIO $ print vegetales
+    -- liftIO $ print vegetales
     -- Esta parte de aqui registra los datos generales de la parcela.
     idParcela <- crearParcelaDB nombrePAR zonaPAR areaPAR
     
@@ -473,15 +497,15 @@ agregarParcelas = do
 
     -- Muestra los datos de la parcela recien creada.
     liftIO $ do
-        putStrLn "\nParcela registrada con éxito (simulado)"
+        putStrLn "\nParcela registrada con exito: "
         putStrLn $ "ID: " ++ show idParcela  -- Mostramos el ID aquí
         putStrLn $ "Nombre: " ++ nombrePAR
         putStrLn $ "Zona: " ++ zonaPAR
-        putStrLn $ "Área: " ++ show areaPAR
+        putStrLn $ "Area: " ++ show areaPAR
         putStrLn $ "Vegetales: " ++ show vegetales
         putStrLn $ "Herramientas: " ++ show (herramientasSeleccionadas)
 
-    liftIO $ putStrLn "Parcela registrada correctamente"
+    -- liftIO $ putStrLn "Parcela registrada correctamente"
 -- Fin de la funcion.
 
 
@@ -508,10 +532,10 @@ extraParcelasHerramientas acumuladas = do
             liftIO $ do
                 putStrLn "\n=== Herramientas disponibles ==="
                 mapM_ (uncurry imprimirHerramientaExtra) (zip [1..] herramientas)
-                putStr "Indique el número de la herramienta que desea agregar: "
+                -- putStr "Indique el número de la herramienta que desea agregar: "
                 hFlush stdout
-            seleccionStr <- liftIO getLine
-            let seleccion = read seleccionStr :: Int
+            -- seleccionStr <- liftIO getLine
+            seleccion <- liftIO $ leerEntradaNumero "Indique el número de la herramienta que desea agregar: "
 
             -- Validamos que la seleccion sea correcta
             if seleccion >= 1 && seleccion <= length herramientas
@@ -538,7 +562,7 @@ extraParcelasHerramientas acumuladas = do
                 else return (reverse acumuladas)  -- Retorna solo las seleccionadas
 
         _ -> do
-            liftIO $ putStrLn "Opción inválida"
+            liftIO $ putStrLn "Opcion invalida"
             extraParcelasHerramientas acumuladas
 -- Fin de la funcion.
 
@@ -570,7 +594,13 @@ extraParcelas acumulados = do
                     precio <- liftIO $ leerEntradaNumeroFloat "Precio por kilo (ej: 12.50): "
                     extraParcelas ((nombre, precio):acumulados)
 
-        "2" -> return (reverse acumulados)
+        "2" -> 
+            if null acumulados
+                then do
+                    liftIO $ putStrLn "Debes de registrar al menos un vegetal para esta parcela."
+                    extraParcelas acumulados
+                else return (reverse acumulados)  -- Retorna solo las seleccionadas
+
         _   -> do
             liftIO $ putStrLn "Opción inválida"
             extraParcelas acumulados
@@ -965,6 +995,7 @@ obtenerCosecha conn = do
 -- Funcion para crear una entrada de teclado para texto, se valida que lo que se ingrese no seva vacio..
 leerEntradaTexto :: String -> IO String
 leerEntradaTexto mensaje = do
+    putStrLn ""
     putStr mensaje
     hFlush stdout
     entrada <- getLine
@@ -980,6 +1011,7 @@ leerEntradaTexto mensaje = do
 -- Funcion para crear una entrada de teclado para numeros.
 leerEntradaNumero :: String -> IO Int
 leerEntradaNumero mensaje = do
+    putStrLn ""
     putStr mensaje
     hFlush stdout
     entrada <- getLine
@@ -1012,6 +1044,7 @@ leerEntradaNumero mensaje = do
 --         leerEntradaNumeroFloat mensaje
 leerEntradaNumeroFloat :: String -> IO Float
 leerEntradaNumeroFloat mensaje = do
+    putStrLn ""
     putStr mensaje
     hFlush stdout
     putStrLn ""
