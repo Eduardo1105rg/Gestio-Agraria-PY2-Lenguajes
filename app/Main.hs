@@ -105,7 +105,7 @@ main = do
     putStrLn "Intentando conectar a la base de datos..."
     --Datos para conectarme a la base
     let connectInfo = defaultConnectInfo {
-            connectHost = "172.22.112.1",
+            connectHost = "192.168.50.136",
             connectPort = 3307,
             connectUser = "root",
             connectPassword = "root",
@@ -318,12 +318,18 @@ guardarHerramientaCSV ruta herramienta = do
 -- separado por comas algo asi  [Herramienta "H001" "Azadón" "Para remover tierra" "Manual",])
 leerHerramientasCSV :: FilePath -> IO (Either String (V.Vector Herramienta))
 leerHerramientasCSV ruta = do
-    existe <- doesFileExist ruta  -- Verificamos si el archivo existe
+    existe <- doesFileExist ruta
     if existe
         then do
-            archivo <- BL.readFile ruta  -- Solo leemos si el archivo existe
-            return $ Csv.decode Csv.HasHeader archivo  
+            archivo <- BL.readFile ruta
+            case Csv.decode Csv.NoHeader  archivo of
+                Left err -> return $ Left $ "Error parseando CSV: " ++ err
+                Right v -> return $ Right (V.filter (not . herramientaVacia) v)
         else return $ Left "Error: El archivo no existe en la ruta especificada."
+  where
+    herramientaVacia :: Herramienta -> Bool
+    herramientaVacia h = null (codigoHA h) && null (nombreHA h) 
+                       && null (descripcionHA h) && null (tipoHA h)
 -- Fin de la funcion.
 
 --Esto es para cuando queremos agregar una herramienta, así le pedimos al usuario que la registre en el sistema
@@ -361,20 +367,6 @@ agregarHerramientas = do
     menuHerramientasOP
 -- Fin de la funcion.
 
-
-
-
---Aqui le pasamos el codigo,nombre,descripcion y tipo de la herramienta para que esta se pueda
---Registrar en la base de datos
--- agregarHerramientasBase :: String -> String -> String -> String -> App ()
--- agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
---     conn <- ask --Pedimos la conexion y la ejecutamos por medio del execute conn el cual envia
---     --ese string como un query a mysql los valores , en este caso tienen signo de pregunta
---     --para que la base le asigne el tipo de valor
---     liftIO $ execute conn "INSERT IGNORE INTO herramientas VALUES (?,?,?,?)" 
---                           (codigoH, nombreH, descripcionH, tipoH)
---     return ()
--- Fin de la funcion.
 
 agregarHerramientasBase :: String -> String -> String -> String -> App ()
 agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
