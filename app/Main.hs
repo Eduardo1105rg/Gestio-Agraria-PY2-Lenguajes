@@ -342,12 +342,12 @@ agregarHerramientas = do
     case herramientas of
         Left errorH -> liftIO $ putStrLn $ "\nError al leer el archivo CSV: " ++ errorH
         Right herramientas -> do
-
+            liftIO $ print herramientas
             -- Antes de insetar las herramientas nuevas, vamos a mostrar las que ya estaban registradas.
             liftIO $ putStrLn "\n> === Viendo las herramientas registradas en el sistema. === <"
             conn <- ask
-            herramientas <- liftIO $ obtenerHerramientas conn
-            liftIO $ mapM_ imprimirHerramienta herramientas
+            herramientas_mostrar <- liftIO $ obtenerHerramientas conn
+            liftIO $ mapM_ imprimirHerramienta herramientas_mostrar
             liftIO $ putStrLn "\n> === Se han mostrado todas las herraminetas registradas en el sistema. === <\n"
 
             -- Insertar cada herramienta en la base de datos
@@ -366,15 +366,30 @@ agregarHerramientas = do
 
 --Aqui le pasamos el codigo,nombre,descripcion y tipo de la herramienta para que esta se pueda
 --Registrar en la base de datos
+-- agregarHerramientasBase :: String -> String -> String -> String -> App ()
+-- agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
+--     conn <- ask --Pedimos la conexion y la ejecutamos por medio del execute conn el cual envia
+--     --ese string como un query a mysql los valores , en este caso tienen signo de pregunta
+--     --para que la base le asigne el tipo de valor
+--     liftIO $ execute conn "INSERT IGNORE INTO herramientas VALUES (?,?,?,?)" 
+--                           (codigoH, nombreH, descripcionH, tipoH)
+--     return ()
+-- Fin de la funcion.
+
 agregarHerramientasBase :: String -> String -> String -> String -> App ()
 agregarHerramientasBase codigoH nombreH descripcionH tipoH = do
-    conn <- ask --Pedimos la conexion y la ejecutamos por medio del execute conn el cual envia
-    --ese string como un query a mysql los valores , en este caso tienen signo de pregunta
-    --para que la base le asigne el tipo de valor
-    liftIO $ execute conn "INSERT IGNORE INTO herramientas VALUES (?,?,?,?)" 
+    conn <- ask
+    filasAfectadas <- liftIO $ execute conn "INSERT IGNORE INTO herramientas VALUES (?,?,?,?)" 
                           (codigoH, nombreH, descripcionH, tipoH)
-    return ()
--- Fin de la funcion.
+    -- liftIO $ print filasAfectadas
+    if filasAfectadas > 0
+        then  liftIO $ putStrLn $ "\nHerramienta agregada: " ++ nombreH ++ " (" ++ codigoH ++ ")"
+    else liftIO $ putStrLn $ "\nLa herramienta " ++ nombreH ++ " (" ++ codigoH ++ ") ya existia y no se agrego"
+    return()
+
+
+
+
 
 -- Lo que hacemos es llamar a la base y en resultados lo que hacemos es registrarlo como un tipo de Herramienta
 -- Entonces creamos el objeto con el map para asi ir fila por fila de la tupla de los resultados, asi es como
@@ -850,7 +865,7 @@ mostrarParcela p = do
 -- Funcion para el registro de cosecha, esta tiene la funcionalida de actual como funcion principal en la cual se solicitaran los datos que se requieren para una cosecha y se validaran.
 subMenuCosecha :: App ()
 subMenuCosecha = do
-    liftIO $ putStrLn ">> Apartado para el cierre de la cosecha."
+    liftIO $ putStrLn ">> Apartado para el registro de cosechas."
 
     -- Cedula del trabajador
     cedula <- liftIO $ leerEntradaTexto "Ingrese el identificador del trabajador (cedula): "
