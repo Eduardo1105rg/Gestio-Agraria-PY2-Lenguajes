@@ -320,45 +320,20 @@ leerHerramientasCSV ruta = do
 agregarHerramientas :: App ()
 agregarHerramientas = do
     liftIO $ do
-        putStrLn "Estas agregando herramientas"
-        putStrLn "Por favor primero indique la ruta del archivo .csv que quiere utilizar"
-        putStrLn "Ejemplo data/Herramientas.csv"
+        putStrLn "Estas agregando herramientas desde un archivo CSV"
+        putStrLn "Por favor indique la ruta del archivo .csv que quiere utilizar"
+        putStrLn "Ejemplo: data/Herramientas.csv"
         hFlush stdout
     ruta <- liftIO getLine
 
-    codigoH <- liftIO $ do
-        hFlush stdout
-        leerEntradaTexto "Ingrese el código de la herramienta ejemplo(HR001)"
-
-    nombreH <- liftIO $ do
-        hFlush stdout
-        leerEntradaTexto "Ingrese el nombre de la herramienta"
-
-    descripcionH <- liftIO $ do
-        hFlush stdout
-        leerEntradaTexto "Ingrese una descripción para la herramienta"
-
-    tipoH <- liftIO $ do
-        hFlush stdout
-        leerEntradaTexto "Ingrese un tipo de herramienta(manual, automatica o motorizada)"
-
-    -- Creamos una herramienta
-    let herramienta = Herramienta codigoH nombreH descripcionH tipoH
-
-    -- Guardamos esa herramienta en el csv
-    liftIO $ do
-        putStrLn "Guardando herramienta en el archivo CSV..."
-        guardarHerramientaCSV ruta herramienta
-
-    -- Leemos todas las herramientas si el caso es correcto sino mostramos un mensaje de error
-    -- Con el map recorremos todas las herramientas y se la pasamos a la base por cada herramienta que haya leido
+    -- Leemos todas las herramientas del CSV
     herramientas <- liftIO $ leerHerramientasCSV ruta
     case herramientas of
         Left errorH -> liftIO $ putStrLn $ "Error al leer el archivo CSV: " ++ errorH
         Right herramientas -> do
             -- Insertar cada herramienta en la base de datos
             mapM_ (\h -> agregarHerramientasBase (codigoHA h) (nombreHA h) (descripcionHA h) (tipoHA h)) herramientas
-            liftIO $ putStrLn "¡Herramientas agregadas exitosamente a la base de datos!"
+            liftIO $ putStrLn $ "¡Se agregaron las herramientas correspondientes!"
     menuHerramientasOP
 -- Fin de la funcion.
 
@@ -575,7 +550,7 @@ verificaNombreVegetal nombre acumulados = any (\(n, _) -> n == nombre) acumulado
 -- Funcion para agrear los vegetales y su precio a la parcela que se esta registrando.
 extraParcelas :: [(String, Float)] -> App [(String, Float)]
 extraParcelas acumulados = do
-    liftIO $ putStrLn "\n¿Desea agregar un vegetal?"
+    liftIO $ putStrLn "\n¿Desea agregar un tipo de vegetal?"
     liftIO $ putStrLn "1. Sí"
     liftIO $ putStrLn "2. No (continuar)"
     liftIO $ putStr "Opción: "
@@ -863,7 +838,7 @@ subMenuCosecha = do
     fechaFinStr <- liftIO $ leerEntradaTexto "Fecha de fin (ej: 30/04/2026): "
     let fechaFin = parseTimeM True defaultTimeLocale formato fechaFinStr :: Maybe Day
 
-    -- Tipo de vegetal (Aqui tambien podriamos mostrar los tipos de vegetales que tiene la parcela ingresada, pero como esta antes de la validacion, da problemas.)
+    -- Tipo de vegetal 
     vegetal  <- liftIO $ leerEntradaTexto "Tipo de vegetal a cosechar: "
 
     -- Cantidad en kg
