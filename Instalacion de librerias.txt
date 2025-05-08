@@ -1,0 +1,14 @@
+-- >> Libreria PCRE (Ubuntu)
+sudo apt update
+sudo apt upgrade
+sudo apt install libpcre3-dev
+
+-- Este es para validar que se haya instalado correctamente.
+dpkg -l | grep libpcre
+
+-- Esto seria para la ejecucion y borrado de los temp
+cabal update
+cabal clean
+cabal build
+cabal run -- Este lanza la app.
+

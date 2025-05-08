@@ -1,0 +1,16 @@
+
+-- == Conexion Edu.1
+    connectHost = "172.22.112.1",
+    connectPort = 3307,
+    connectUser = "root",
+    connectPassword = "root",
+    connectDatabase = "fincaAgricola"
+
+
+-- Bryan:
+    connectHost = "192.168.50.136",
+    connectPort = 3307,
+    connectUser = "root",
+    connectPassword = "root",
+    connectDatabase = "fincaAgricola"
+
