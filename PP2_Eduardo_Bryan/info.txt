@@ -1,0 +1,26 @@
+Nombre del curso: 
+	Lenguajes de programación [IC - 4700]
+
+b. Número de semestre y año lectivo:
+	Primer semestre del 2025.
+
+c. Nombre de los Estudiante:
+	Eduardo Jesus Rojas Gomez 
+	Bryan Londoño Marchena 
+
+d. Número de carnet de los estudiantes:
+	Eduardo - [2023152827]
+	Bryan - [2022233102]
+
+e. Número de proyecto programado:
+	#2.
+
+f. Fecha de entrega:
+	07-05-2025
+
+g. Estatus de la entrega (debe ser CONGRUENTE con la solución entregada): 
+	[Excelente]
+
+f. Enlace al repositorio del proyecto:
+	https://github.com/Eduardo1105rg/Gestio-Agraria-PY2-Lenguajes.git
+
